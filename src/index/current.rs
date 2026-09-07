@@ -1071,7 +1071,17 @@ impl CurrentIndexes {
     ) -> Vec<NodeId> {
         self.prop_index
             .get(&(label, prop_key, value.clone()))
-            .map(|set| set.iter().map(|e| *e.key()).collect())
+            .map(|set| {
+                // Pre-size from the set's own length: `DashSet::iter()`'s
+                // `size_hint()` doesn't reflect the true element count, so an
+                // unsized `collect()` under-guesses and `Vec` grows by
+                // repeated reallocation as it fills (mirrors the
+                // `capacity_hint()` idiom already used by the adjacency
+                // merged-path readers in `storage/current/mod.rs`).
+                let mut result = Vec::with_capacity(set.len());
+                result.extend(set.iter().map(|e| *e.key()));
+                result
+            })
             .unwrap_or_default()
     }
 

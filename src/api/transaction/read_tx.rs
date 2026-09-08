@@ -485,6 +485,31 @@ mod tests {
         assert_eq!(node.get_property("age").and_then(|v| v.as_int()), Some(30));
     }
 
+
+    #[test]
+    fn test_read_transaction_get_node_from_historical_not_found() {
+        // 🛡️ Sentry Test: Verify `get_node_from_historical` branch coverage.
+        let current = Arc::new(CurrentStorage::new());
+        let historical = Arc::new(RwLock::new(HistoricalStorage::new()));
+
+        let tx_id = TxId::new(1);
+        let visibility_manager = Arc::new(TxVisibilityManager::new());
+
+        let valid_time = crate::core::temporal::time::now();
+
+        let snapshot = TransactionSnapshot {
+            snapshot_timestamp: valid_time,
+            active_transactions: Arc::new(HashSet::new()),
+        };
+
+        let tx = ReadTransaction::new(tx_id, snapshot, current, visibility_manager, historical);
+
+        // This exercises the `None` branch of `get_node_from_historical` since history is empty
+        let result = tx.get_node_from_historical(NodeId::new(123).unwrap());
+
+        assert!(result.is_err());
+    }
+
     #[test]
     fn test_read_transaction_get_node_not_found() {
         let current = Arc::new(CurrentStorage::new());

@@ -37,3 +37,7 @@
 **[Fix `execute_traversal` target shards bug]**
 **Learning:** `plan.steps` from `route_traversal` returns empty list, and we need `involved_shards`
 **Action:** Replace `steps` with `involved_shards` and update the test.
+
+**Historical Storage Not Found Cases**
+**Learning:** Exploring `HistoricalStorage` coverage revealed missing paths for when `get_node_from_historical` returns `None` when a node doesn't exist in history at snapshot time.
+**Action:** Wrote direct tests targeting the None arm of historical node retrieval logic to prove it returns the expected StorageError.

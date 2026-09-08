@@ -1119,19 +1119,41 @@ mod tests {
         let config = ExecutorConfig::default();
         let mut executor = QueryExecutor::new(config, router);
 
-        let shard0 = make_shard_id(0);
-        let shard1 = make_shard_id(1);
+        let shard0 = make_shard_id(1);
+        let shard1 = make_shard_id(2);
 
-        executor.register_client(shard0, Arc::new(MockShardClient::new(shard0)));
-        executor.register_client(shard1, Arc::new(MockShardClient::new(shard1)));
+        let client0 = Arc::new(MockShardClient::new(shard0));
+        let client1 = Arc::new(MockShardClient::new(shard1));
+
+        // Setup distinct mock responses to verify MergeNodes behavior over Concat
+        client0.set_query_response(vec![1, 2, 3]);
+        client1.set_query_response(vec![1, 2, 3, 4, 5]);
+
+        executor.register_client(shard0, Arc::clone(&client0));
+        executor.register_client(shard1, Arc::clone(&client1));
 
         let start_node = NodeId::new(42).unwrap();
         // Person maps to shard0. Place maps to shard1. Company is not in test_config, so it won't map to anything and route_node probably hashes it or falls back?
         // Let's use "Place" to ensure we hit shard1 as well.
         let result = executor
-            .execute_traversal(start_node, "Person", &["Place"])
+            .execute_traversal(start_node, "Place", &["Event"])
             .unwrap();
 
         assert_eq!(result.shards_queried, 2);
+
+        // Verify the exact query data serialized and sent
+        let expected_query_data =
+            executor.serialize_traversal_plan(&test_router().route_traversal("Place", &["Event"]));
+        assert_eq!(
+            client0.query_received.read().unwrap().as_ref().unwrap(),
+            &expected_query_data
+        );
+        assert_eq!(
+            client1.query_received.read().unwrap().as_ref().unwrap(),
+            &expected_query_data
+        );
+
+        // Verify aggregation strategy used MergeNodes instead of Concat (Concat would be len 8)
+        assert_eq!(result.data, vec![1, 2, 3, 4, 5]);
     }
 }

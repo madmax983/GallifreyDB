@@ -346,3 +346,17 @@
 **Finding:** The `LimitPushdown` tests originally missed several behavioral edge cases and logic checks, particularly regarding the propagation limits in BinaryOp combinations (`||`), updating limit values correctly against child bounds, and setting vector rank limits.
 **Evidence:** `cargo mutants` caught mutants in `LimitPushdown::push_down` specifically targeting the changed boolean condition logic and bounds assignment.
 **Recommendation:** Added `sentry_tests` to `LimitPushdown` that explicitly trigger tests enforcing the boolean change propagation, verifying that updated properties reflect correct nested limits, and vector bounds assignment. Tests now prevent `||` to `&&` mutations and correct top-k modifications.
+
+**[Execute Traversal Coverage Gap]**
+**Module:** `src/storage/sharding/executor.rs`
+**Severity:** 🔴 Critical
+**Finding:** The tests for `execute_traversal` lacked assertions on the actual query data dispatched to mock shards, and they failed to properly exercise the result aggregation strategy (`MergeNodes`), allowing mutations that replaced `MergeNodes` with `Concat` and mutations that zeroed out the query payload to survive.
+**Evidence:** `cargo mutants` showed that replacing `plan.involved_shards` logic, replacing `AggregationStrategy::MergeNodes`, and dropping the serialized payload entirely would not fail the test suite because the mocks weren't validated for exact payloads, and identical mock responses obscured aggregation differences.
+**Recommendation:** Captured raw query data via `MockShardClient::query_received` and asserted it strictly matches the serialized `TraversalPlan`. Configured distinct mock responses to distinguish between `Concat` and `MergeNodes` aggregation.
+
+**[Execute Traversal Hardcoded Shards Mutant]**
+**Module:** `src/storage/sharding/executor.rs`
+**Severity:** 🟡 Suspect
+**Finding:** The traversal execution test `test_execute_traversal` only verified query routing from `Person` -> `Place`, which maps exactly to shards 0 and 1. This allowed a mutation that hardcodes the target shards to `vec![ShardId::new(0).unwrap(), ShardId::new(1).unwrap()]` to survive.
+**Evidence:** A custom python script mutating `target_shards` collection to the hardcoded `0, 1` array passed the test suite.
+**Recommendation:** Changed the test logic to start from `Place` and target `Event`, shifting the execution to shards 1 and 2, which successfully killed the hardcoded `0, 1` array mutant.

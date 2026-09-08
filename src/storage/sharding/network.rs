@@ -685,6 +685,8 @@ pub struct MockShardClient {
     latency: RwLock<Duration>,
     fail_next: RwLock<Option<NetworkError>>,
     call_counts: RwLock<HashMap<String, usize>>,
+    /// The last query data received by this mock client.
+    pub query_received: RwLock<Option<Vec<u8>>>,
 }
 
 impl MockShardClient {
@@ -704,6 +706,7 @@ impl MockShardClient {
             latency: RwLock::new(Duration::from_micros(100)),
             fail_next: RwLock::new(None),
             call_counts: RwLock::new(HashMap::new()),
+            query_received: RwLock::new(None),
         }
     }
 
@@ -854,6 +857,8 @@ impl ShardClient for MockShardClient {
         if !self.is_healthy() {
             return Err(NetworkError::ShardUnavailable(self.shard_id));
         }
+
+        *self.query_received.write().unwrap() = Some(_query_data.to_vec());
 
         self.simulate_latency();
         Ok(self.query_response.read().unwrap().clone())

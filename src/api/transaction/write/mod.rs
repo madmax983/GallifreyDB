@@ -2524,7 +2524,7 @@ impl WriteTransaction {
     ///   (`valid_to == valid_from` is allowed and yields an empty interval).
     /// - [`TemporalError::ValidTimeTooFarInFuture`](crate::core::error::TemporalError::ValidTimeTooFarInFuture)
     ///   if `valid_to` is more than one year in the future.
-    /// - [`StorageError::NodeNotFound`](crate::core::error::StorageError::NodeNotFound)
+    /// - [`StorageError::NodeNotFound`]
     ///   if the node never existed.
     #[must_use = "this Result must be used; ignoring errors can lead to silent failures"]
     pub fn retract_node(
@@ -2536,7 +2536,7 @@ impl WriteTransaction {
     }
 
     /// Buffer a valid-time retraction of a node, stamping a write-time
-    /// [`Provenance`](crate::core::provenance::Provenance) bundle recording the
+    /// [`Provenance`] bundle recording the
     /// acting principal onto the retraction version (Issue #3427).
     ///
     /// Behaves identically to [`retract_node`](Self::retract_node) other than
@@ -2663,7 +2663,7 @@ impl WriteTransaction {
     ///
     /// See [`retract_node`](Self::retract_node) for the bi-temporal
     /// semantics, idempotency contract, and errors (with
-    /// [`StorageError::EdgeNotFound`](crate::core::error::StorageError::EdgeNotFound)
+    /// [`StorageError::EdgeNotFound`]
     /// for a never-existing edge).
     #[must_use = "this Result must be used; ignoring errors can lead to silent failures"]
     pub fn retract_edge(
@@ -2675,7 +2675,7 @@ impl WriteTransaction {
     }
 
     /// Buffer a valid-time retraction of an edge, stamping a write-time
-    /// [`Provenance`](crate::core::provenance::Provenance) bundle recording the
+    /// [`Provenance`] bundle recording the
     /// acting principal onto the retraction version (Issue #3427).
     ///
     /// See [`retract_node_with_provenance`](Self::retract_node_with_provenance)

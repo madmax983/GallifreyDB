@@ -112,7 +112,7 @@ impl AletheiaDB {
     ///
     /// # Errors
     ///
-    /// - [`LineageError::SourceNotFound`] (as [`Error::Lineage`](crate::core::error::Error::Lineage))
+    /// - [`LineageError::SourceNotFound`] (as [`Error::Lineage`])
     ///   if any reference does not resolve to an existing fact version — the
     ///   node is **not** created.
     /// - Any error [`create_node`](Self::create_node) can return.

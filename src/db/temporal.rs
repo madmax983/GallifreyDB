@@ -534,7 +534,7 @@ impl AletheiaDB {
     ///
     /// This is the *discovery* counterpart to the per-entity history/diff APIs: it answers
     /// "**which** entities were created, modified, or deleted between T1 and T2?" without the
-    /// caller already knowing any IDs. Each returned [`ChangeRecord`](crate::core::ChangeRecord)
+    /// caller already knowing any IDs. Each returned [`ChangeRecord`]
     /// carries the entity id, kind, change type, and the version's transaction- and valid-time
     /// bounds, so a caller can then drill in with `get_node_history` / `diff_node_versions`.
     ///

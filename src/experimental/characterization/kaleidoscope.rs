@@ -191,6 +191,20 @@ impl LayoutEngine {
     }
 
     /// Add a semantic link (Vector constraint).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use aletheiadb::core::id::NodeId;
+    /// use aletheiadb::experimental::characterization::kaleidoscope::{LayoutConfig, LayoutEngine};
+    ///
+    /// let mut engine = LayoutEngine::new(LayoutConfig::default());
+    /// let n1 = NodeId::new(1).unwrap();
+    /// let n2 = NodeId::new(2).unwrap();
+    ///
+    /// // Add a semantic link with a similarity score of 0.8
+    /// engine.add_semantic_link(n1, n2, 0.8);
+    /// ```
     pub fn add_semantic_link(&mut self, a: NodeId, b: NodeId, similarity: f32) {
         if similarity > 0.0 {
             self.add_node(a);
@@ -213,6 +227,21 @@ impl LayoutEngine {
     }
 
     /// Execute one step of physics.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use aletheiadb::core::id::NodeId;
+    /// use aletheiadb::experimental::characterization::kaleidoscope::{LayoutConfig, LayoutEngine};
+    ///
+    /// let mut engine = LayoutEngine::new(LayoutConfig::default());
+    /// let n1 = NodeId::new(1).unwrap();
+    /// let n2 = NodeId::new(2).unwrap();
+    /// engine.add_edge(n1, n2);
+    ///
+    /// // Run one step of the physics simulation manually
+    /// engine.step();
+    /// ```
     pub fn step(&mut self) {
         let k = self.config.optimal_distance;
         let mut forces: HashMap<NodeId, Point> = self

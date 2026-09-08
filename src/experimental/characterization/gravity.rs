@@ -209,6 +209,30 @@ impl<'a> GravitySimulator<'a> {
     /// # Returns
     ///
     /// A list of `(NodeId, Vec<f32>)` pairs representing the proposed new vector positions for neighbors.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use aletheiadb::AletheiaDB;
+    /// use aletheiadb::core::property::PropertyMapBuilder;
+    /// use aletheiadb::experimental::characterization::gravity::GravitySimulator;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let db = AletheiaDB::new()?;
+    ///
+    /// let center_props = PropertyMapBuilder::new().insert_vector("vec", &[1.0, 0.0]).build();
+    /// let center = db.create_node("Sun", center_props)?;
+    ///
+    /// let neighbor_props = PropertyMapBuilder::new().insert_vector("vec", &[0.0, 1.0]).build();
+    /// let neighbor = db.create_node("Planet", neighbor_props)?;
+    ///
+    /// db.create_edge(center, neighbor, "ORBITS", Default::default())?;
+    ///
+    /// let sim = GravitySimulator::new(&db);
+    /// let updates = sim.simulate_pull(center, "vec", 10.0, 0.1)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn simulate_pull(
         &self,
         center_id: NodeId,

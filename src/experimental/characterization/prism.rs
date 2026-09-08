@@ -271,6 +271,26 @@ impl<'a> Prism<'a> {
     }
 
     /// Analyze a node using a specific vector property.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use aletheiadb::AletheiaDB;
+    /// use aletheiadb::core::property::PropertyMapBuilder;
+    /// use aletheiadb::experimental::characterization::prism::Prism;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let db = AletheiaDB::new()?;
+    /// let mut prism = Prism::new(&db);
+    /// prism.add_axis("Logic", vec![1.0, 0.0]);
+    ///
+    /// let props = PropertyMapBuilder::new().insert_vector("custom_vec", &[1.0, 0.5]).build();
+    /// let node = db.create_node("Concept", props)?;
+    ///
+    /// let spectrum = prism.analyze_node_with_property(node, "custom_vec")?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn analyze_node_with_property(
         &self,
         node_id: NodeId,
@@ -286,6 +306,30 @@ impl<'a> Prism<'a> {
     ///
     /// This method retrieves the node's history and projects the vector at each version
     /// onto the defined axes.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use aletheiadb::AletheiaDB;
+    /// use aletheiadb::core::property::PropertyMapBuilder;
+    /// use aletheiadb::core::temporal::{TimeRange, time};
+    /// use aletheiadb::api::transaction::WriteOps;
+    /// use aletheiadb::experimental::characterization::prism::Prism;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let db = AletheiaDB::new()?;
+    /// let mut prism = Prism::new(&db).with_vector_property("vec");
+    /// prism.add_axis("Logic", vec![1.0, 0.0]);
+    ///
+    /// let t1 = time::from_millis(1000);
+    /// let props1 = PropertyMapBuilder::new().insert_vector("vec", &[1.0, 0.0]).build();
+    /// let node_id = db.write(|tx| tx.create_node_with_valid_time("Concept", props1, Some(t1)))?;
+    ///
+    /// let range = TimeRange::new(time::from_millis(0), time::from_millis(2000)).unwrap();
+    /// let evolution = prism.analyze_evolution(node_id, range)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn analyze_evolution(
         &self,
         node_id: NodeId,

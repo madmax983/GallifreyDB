@@ -41,6 +41,31 @@ impl<'a> Starlight<'a> {
     }
 
     /// Exports an ego-graph centered around `start_node` up to `max_depth` hops in JSON.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use aletheiadb::AletheiaDB;
+    /// use aletheiadb::core::property::PropertyMapBuilder;
+    /// use aletheiadb::experimental::characterization::starlight::Starlight;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let db = AletheiaDB::new()?;
+    ///
+    /// let props_a = PropertyMapBuilder::new().insert("name", "Alice").build();
+    /// let node_a = db.create_node("Person", props_a)?;
+    ///
+    /// let props_b = PropertyMapBuilder::new().insert("name", "Bob").build();
+    /// let node_b = db.create_node("Person", props_b)?;
+    ///
+    /// db.create_edge(node_a, node_b, "KNOWS", Default::default())?;
+    ///
+    /// let starlight = Starlight::new(&db);
+    /// let json = starlight.export_ego_graph(node_a, 2, Some(500))?;
+    /// println!("{}", json);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn export_ego_graph(
         &self,
         start_node: NodeId,

@@ -173,6 +173,35 @@ impl<'a> Synapse<'a> {
     ///
     /// This encourages the algorithm to choose paths that are semantically "good enough"
     /// but highly popular, over paths that are semantically perfect but unknown.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use aletheiadb::AletheiaDB;
+    /// use aletheiadb::core::property::PropertyMapBuilder;
+    /// use aletheiadb::experimental::characterization::synapse::{Synapse, SynapseContext};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let db = AletheiaDB::new()?;
+    /// let context = SynapseContext::new();
+    /// let synapse = Synapse::new(&db, &context);
+    ///
+    /// let props_a = PropertyMapBuilder::new().insert_vector("vec", &[1.0, 0.0]).build();
+    /// let a = db.create_node("Node", props_a)?;
+    ///
+    /// let props_b = PropertyMapBuilder::new().insert_vector("vec", &[0.8, 0.6]).build();
+    /// let b = db.create_node("Node", props_b)?;
+    ///
+    /// let edge_id = db.create_edge(a, b, "NEXT", Default::default())?;
+    ///
+    /// // Simulate traversing the edge
+    /// synapse.observe(edge_id);
+    ///
+    /// // Find path
+    /// let path = synapse.adaptive_semantic_path(a, b, "vec")?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn adaptive_semantic_path(
         &self,
         start: NodeId,

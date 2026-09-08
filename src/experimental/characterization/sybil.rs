@@ -156,6 +156,34 @@ impl<'a> Sybil<'a> {
     /// * `property_name` - The vector property to use as the "meme".
     /// * `model` - The propagation logic.
     /// * `steps` - Number of iterations.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use aletheiadb::AletheiaDB;
+    /// use aletheiadb::core::property::PropertyMapBuilder;
+    /// use aletheiadb::experimental::characterization::sybil::{Sybil, LinearPropagation};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let db = AletheiaDB::new()?;
+    ///
+    /// // Create nodes and edges
+    /// let props_a = PropertyMapBuilder::new().insert_vector("opinion", &[1.0, 0.0]).build();
+    /// let node_a = db.create_node("Person", props_a)?;
+    ///
+    /// let props_b = PropertyMapBuilder::new().insert_vector("opinion", &[0.0, 1.0]).build();
+    /// let node_b = db.create_node("Person", props_b)?;
+    ///
+    /// db.create_edge(node_a, node_b, "INFLUENCES", Default::default())?;
+    ///
+    /// let sybil = Sybil::new(&db);
+    /// let model = LinearPropagation::new(0.5); // Average between self and neighbors
+    ///
+    /// // Run 1 step of simulation
+    /// let state = sybil.simulate("opinion", &model, 1)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn simulate<M: PropagationModel>(
         &self,
         property_name: &str,

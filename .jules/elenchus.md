@@ -346,3 +346,10 @@
 **Finding:** The `LimitPushdown` tests originally missed several behavioral edge cases and logic checks, particularly regarding the propagation limits in BinaryOp combinations (`||`), updating limit values correctly against child bounds, and setting vector rank limits.
 **Evidence:** `cargo mutants` caught mutants in `LimitPushdown::push_down` specifically targeting the changed boolean condition logic and bounds assignment.
 **Recommendation:** Added `sentry_tests` to `LimitPushdown` that explicitly trigger tests enforcing the boolean change propagation, verifying that updated properties reflect correct nested limits, and vector bounds assignment. Tests now prevent `||` to `&&` mutations and correct top-k modifications.
+
+## [Historical Storage Temporal Missing Anchor Reconstruction Mutants]
+**Module:** `src/storage/historical/mod.rs`
+**Severity:** 🔴 Critical
+**Finding:** The tests covering temporal reconstruction errors (`test_missing_anchor_detected_after_anchor_deletion`, `test_edge_missing_anchor_detected_after_anchor_deletion`, `test_reconstruct_nonexistent_node_version_returns_version_not_found`, etc) had blind spots that allowed mutants to survive where the fallback string was used instead of the entity ID, or the exact nonexistent id was not verified. This causes incorrect error payloads or incorrectly identifying `MissingAnchor` instead of `VersionNotFound` on nonexistent nodes/edges.
+**Evidence:** Running `cargo mutants` manually by modifying conditions and returning invalid entity IDs shows that replacing `entity_id` formatting strings survives because the tests do not assert the exact string value of the entity ID inside the `MissingAnchor` error beyond a generic `starts_with("Node(")`.
+**Recommendation:** Add assertions to verify the exact string values in the error messages. For example, verify that `entity_id` is exactly `"Node(99)"` or `"Edge(55)"`. Check that the id returned in `VersionNotFound` matches the nonexistent ID.

@@ -5339,7 +5339,7 @@ fn test_missing_anchor_detected_after_anchor_deletion() {
             // get_node_version_any_tier), not the generic "version V" fallback.
             // This assertion kills the mutation that removes the .and_then() lookup.
             assert!(
-                entity_id.starts_with("Node("),
+                entity_id == "Node(99)",
                 "MissingAnchor entity_id must identify the node, got: {entity_id}"
             );
         }
@@ -5426,7 +5426,7 @@ fn test_edge_missing_anchor_detected_after_anchor_deletion() {
             // entity_id must come from the version's edge_id field (via
             // get_edge_version_any_tier), not the generic "version V" fallback.
             assert!(
-                entity_id.starts_with("Edge("),
+                entity_id == "Edge(55)",
                 "MissingAnchor entity_id must identify the edge, got: {entity_id}"
             );
         }
@@ -5573,8 +5573,8 @@ fn test_reconstruct_nonexistent_node_version_returns_version_not_found() {
     let result = storage.reconstruct_node_properties(nonexistent);
     assert!(result.is_err(), "Non-existent version must return an error");
     match result.unwrap_err() {
-        crate::core::error::Error::Storage(StorageError::VersionNotFound(_)) => {}
-        err => panic!("Expected VersionNotFound for a never-added version, got: {err:?}"),
+        crate::core::error::Error::Storage(StorageError::VersionNotFound(id)) => assert_eq!(id, nonexistent),
+        err => panic!("Expected VersionNotFound for a never-added version, got: {:?}", err),
     }
 }
 
@@ -5593,7 +5593,7 @@ fn test_reconstruct_nonexistent_edge_version_returns_version_not_found() {
         "Non-existent edge version must return an error"
     );
     match result.unwrap_err() {
-        crate::core::error::Error::Storage(StorageError::VersionNotFound(_)) => {}
+        crate::core::error::Error::Storage(StorageError::VersionNotFound(id)) => assert_eq!(id, nonexistent),
         err => panic!("Expected VersionNotFound for a never-added edge version, got: {err:?}"),
     }
 }

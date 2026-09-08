@@ -4950,7 +4950,9 @@ impl SortIterator {
             Some(i) => i,
             None => return Ok(()),
         };
-        let mut rows: Vec<QueryRow> = Vec::new();
+        // ⚡ Bolt Optimization: Pre-allocates vector based on iterator's lower size bound
+        // to reduce heap allocations during iterator drain.
+        let mut rows: Vec<QueryRow> = Vec::with_capacity(input.size_hint().0);
         while let Some(row) = input.next() {
             rows.push(row?);
         }

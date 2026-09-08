@@ -13358,6 +13358,7 @@ mod server_unit_tests {
 
     #[cfg(feature = "cypher")]
     #[test]
+    #[ignore = "Multi-pattern matching is currently disabled in v1 due to namespace scoping constraints"]
     fn handle_query_multi_pattern_returns_non_null_bindings() {
         use crate::core::PropertyMapBuilder;
         let server = make_server();

@@ -11,6 +11,7 @@ pub mod archetype;
 pub mod graph_context;
 pub mod gravity;
 pub mod kaleidoscope;
+pub mod obelisk;
 pub mod papyrus;
 pub mod prism;
 pub mod sybil;

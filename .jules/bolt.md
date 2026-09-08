@@ -77,3 +77,6 @@
 **Pre-allocating Vec Capacities in Hot Paths**
 **Learning:** Pre-allocating standard Rust `Vec` objects using `Vec::with_capacity` in hot-paths like parsers and query planners eliminates unnecessary heap reallocations (0 -> 4 -> 8 -> 16 etc.), without changing semantics or causing borrow checker issues. However, if the expected bounds are wildly incorrect it could lead to memory bloat. A small capacity for small collections minimizes performance impacts in hot loops.
 **Action:** When a loop dynamically pushes elements to a new empty Vector (especially in repeated execution domains like parsers and network/storage iterators), replace `Vec::new()` with `Vec::with_capacity(n)` if a typical or max size `n` is roughly known.
+**[Tombstone ID Collection Optimization]**
+**Learning:** In transaction application, `tombstone_ids` were collected into an intermediate `Vec<u64>` just to be converted back into an iterator using `.into_iter()`. We can directly pass the `impl Iterator<Item = u64>` mapped over the slice iterator.
+**Action:** Remove intermediate `.collect::<Vec<_>>().into_iter()` chains and adjust function signatures to accept `&mut impl Iterator<Item = T>` instead of concrete `std::vec::IntoIter<T>`.

@@ -10,3 +10,6 @@
 ## 2024-05-14 - [Adding Examples to HLC and documenting src/main.rs]
 **Confusion:** The `src/main.rs` file was missing module-level documentation (`//!`), which triggers the `missing_docs` lint, but was hidden by the lint configurations inside `src/lib.rs` affecting `src/main.rs`. Also `HybridTimestamp::send` lacked an example showing the behavior of its logical counter.
 **Clarification:** Added `//! The AletheiaDB binary.` to `src/main.rs` and added an executable `## Examples` block to `HybridTimestamp::send` in `src/core/hlc.rs`.
+## 2024-07-13 - [Fixing rustdoc explicit link warnings]
+**Confusion:** Resolving intra-doc links manually with redundant paths (e.g. `[`Provenance`](crate::core::provenance::Provenance)`) triggers rustdoc warnings if the type is already imported in scope or available via the crate root.
+**Clarification:** Removed the explicit link path and relied on the standard intra-doc linking (e.g. `[`Provenance`]`) where appropriate to silence `rustdoc::redundant_explicit_links` warnings. Where links pointed to private items (e.g. `Sealer::seal_one`), they were converted to standard markdown backticks (`` `Sealer::seal_one` ``).

@@ -1115,6 +1115,49 @@ mod tests {
     }
 
     #[test]
+    fn test_hybrid_timestamp_deserialize_errors() {
+        use crate::core::hlc::HybridTimestamp;
+        // 1. Buffer too short
+        let short_buffer = [0u8; 11];
+        let result = HybridTimestamp::deserialize(&short_buffer);
+        assert!(
+            matches!(result, Err(crate::core::error::StorageError::CorruptedData(ref msg)) if msg.contains("Buffer too short")),
+            "Expected CorruptedData for short buffer"
+        );
+
+        // 2. Wallclock > MAX_VALID_TIMESTAMP
+        let mut buffer = [0u8; 12];
+        let invalid_wallclock: i64 = MAX_VALID_TIMESTAMP + 1;
+        buffer[0..8].copy_from_slice(&invalid_wallclock.to_le_bytes());
+        let result = HybridTimestamp::deserialize(&buffer);
+        assert!(
+            matches!(result, Err(crate::core::error::StorageError::CorruptedData(ref msg)) if msg.contains("exceeds MAX_VALID_TIMESTAMP")),
+            "Expected CorruptedData for exceeding MAX_VALID_TIMESTAMP"
+        );
+
+        // 3. Wallclock == i64::MAX but logical != 0
+        let mut buffer2 = [0u8; 12];
+        buffer2[0..8].copy_from_slice(&i64::MAX.to_le_bytes());
+        buffer2[8..12].copy_from_slice(&1u32.to_le_bytes()); // logical = 1
+        let result2 = HybridTimestamp::deserialize(&buffer2);
+        assert!(
+            matches!(result2, Err(crate::core::error::StorageError::CorruptedData(ref msg)) if msg.contains("non-zero logical counter")),
+            "Expected CorruptedData for i64::MAX with non-zero logical"
+        );
+    }
+
+    #[test]
+    fn test_hybrid_timestamp_new_validation() {
+        use crate::core::hlc::HybridTimestamp;
+        let invalid_wallclock: i64 = MAX_VALID_TIMESTAMP + 1;
+        let result = HybridTimestamp::new(invalid_wallclock, 0);
+        assert!(
+            matches!(result, Err(TemporalError::InvalidTimestamp { .. })),
+            "Expected InvalidTimestamp when wallclock exceeds MAX_VALID_TIMESTAMP"
+        );
+    }
+
+    #[test]
     fn test_hybrid_timestamp_serialization_size() {
         use crate::core::hlc::HybridTimestamp;
 

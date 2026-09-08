@@ -37,3 +37,6 @@
 **[Fix `execute_traversal` target shards bug]**
 **Learning:** `plan.steps` from `route_traversal` returns empty list, and we need `involved_shards`
 **Action:** Replace `steps` with `involved_shards` and update the test.
+**HybridTimestamp Validation Coverage**
+**Learning:** Error paths for `HybridTimestamp::deserialize` (`StorageError::CorruptedData` on buffer underflow or invalid wallclock logic) and `HybridTimestamp::new` (`TemporalError::InvalidTimestamp` on wallclock bounds) lacked explicit branch coverage. While `cargo test` passes, if validation logic were accidentally modified, no targeted test would fail.
+**Action:** Always add targeted tests checking explicit error returns and parsing logic for foundational primitives (like `HybridTimestamp`).

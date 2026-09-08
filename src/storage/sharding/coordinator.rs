@@ -675,41 +675,52 @@ impl ShardCoordinator {
         };
 
         // CRITICAL: Log the commit decision BEFORE sending commits
-        // This ensures we can recover if the coordinator crashes
-        {
-            let log = match self.commit_log.write() {
-                Ok(log) => log,
+        // This ensures we can recover if the coordinator crashes.
+        // We removed the transaction from `active_transactions` above, dropping the lock.
+        // We now acquire the `commit_log` write lock cleanly to avoid ABBA deadlocks.
+        // We MUST reinsert the transaction AFTER the log lock is dropped if it fails.
+        let log_result = {
+            match self.commit_log.write() {
                 Err(_) => {
-                    self.reinsert_transaction(tx_id, transaction);
-                    return Err(DistributedTxError::Aborted {
+                    Err(DistributedTxError::Aborted {
                         reason: "Lock poisoned".to_string(),
-                    });
+                    })
                 }
-            };
+                Ok(log) => {
+                    let should_log = match log.get_decision(tx_id) {
+                        Some(existing) => {
+                            use super::persistent_commit_log::EntryType;
+                            !transaction.commit_decision_logged
+                                || existing.entry_type != EntryType::Commit
+                                || existing.commit_timestamp != commit_timestamp
+                        }
+                        None => true,
+                    };
 
-            let should_log = match log.get_decision(tx_id) {
-                Some(existing) => {
-                    // Check if existing decision matches what we want to log
-                    // PersistentCommitLog entries are specific types (Commit/Abort)
-                    // If we found an entry, check if it's a Commit and has same timestamp
-                    use super::persistent_commit_log::EntryType;
-                    !transaction.commit_decision_logged
-                        || existing.entry_type != EntryType::Commit
-                        || existing.commit_timestamp != commit_timestamp
-                }
-                None => true,
-            };
-
-            if should_log {
-                match log.log_commit(tx_id, transaction.participant_shards(), commit_timestamp) {
-                    Ok(_) => transaction.commit_decision_logged = true,
-                    Err(e) => {
-                        self.reinsert_transaction(tx_id, transaction);
-                        return Err(DistributedTxError::Aborted {
-                            reason: format!("Failed to log commit decision: {}", e),
-                        });
+                    if should_log {
+                        match log.log_commit(tx_id, transaction.participant_shards(), commit_timestamp)
+                        {
+                            Ok(_) => Ok(true),
+                            Err(e) => Err(DistributedTxError::Aborted {
+                                reason: format!("Failed to log commit decision: {}", e),
+                            }),
+                        }
+                    } else {
+                        Ok(false)
                     }
                 }
+            }
+        };
+
+        match log_result {
+            Ok(logged) => {
+                if logged {
+                    transaction.commit_decision_logged = true;
+                }
+            }
+            Err(e) => {
+                self.reinsert_transaction(tx_id, transaction);
+                return Err(e);
             }
         }
 

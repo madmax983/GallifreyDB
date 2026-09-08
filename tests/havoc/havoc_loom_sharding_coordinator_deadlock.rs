@@ -20,7 +20,10 @@ mod loom_test {
         }
 
         fn recover_pending_transactions(&self) {
-            let _log_guard = self.commit_log.read().unwrap();
+            let _decisions = {
+                let _log_guard = self.commit_log.read().unwrap();
+                ()
+            }; // explicitly drop the log guard just like in the real implementation
 
             // Reinserting recovered txns
             let _tx_guard = self.active_transactions.write().unwrap();
@@ -50,9 +53,10 @@ mod loom_test {
 
             {
                 let _log_guard = self.commit_log.write().unwrap();
-                // Modeling failure branch: reinsert_transaction
-                // let _tx_guard = self.active_transactions.write().unwrap();
-            }
+            } // FIX: Drop the commit log lock before taking the active transactions lock!
+
+            // Modeling failure branch: reinsert_transaction
+            let _tx_guard = self.active_transactions.write().unwrap();
 
             let connections = self.connections.read().unwrap();
 

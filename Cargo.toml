@@ -119,7 +119,7 @@ metrics = { version = "0.24", optional = true }
 # spans (ADR 0056) into OpenTelemetry; `tracing-subscriber` provides the
 # registry the OTel layer installs into.
 opentelemetry = { version = "0.30", optional = true }
-opentelemetry_sdk = { version = "0.30", optional = true, features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.32", optional = true, features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.30", optional = true, default-features = false, features = ["trace", "http-proto", "reqwest-client"] }
 tracing-opentelemetry = { version = "0.31", optional = true }
 tracing-subscriber = { version = "0.3", optional = true, features = ["registry", "env-filter", "fmt", "std"] }

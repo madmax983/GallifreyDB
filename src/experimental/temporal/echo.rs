@@ -81,12 +81,6 @@ impl TemporalFingerprint {
     }
 }
 
-/// Trait for generating temporal fingerprints from entity history.
-pub trait Resonator {
-    /// Generate a fingerprint from the given history.
-    fn resonate(&self, history: &EntityHistory) -> TemporalFingerprint;
-}
-
 /// A resonator that measures activity density over a fixed time window.
 ///
 /// # The Details
@@ -98,7 +92,7 @@ pub trait Resonator {
 /// ```
 /// # #[cfg(feature = "semantic-temporal")]
 /// # fn main() {
-/// use aletheiadb::experimental::echo::{ActivityDensityResonator, Resonator};
+/// use aletheiadb::experimental::echo::ActivityDensityResonator;
 ///
 /// let resonator = ActivityDensityResonator {
 ///     window_size_us: 3600 * 1_000_000, // 1 hour
@@ -124,8 +118,9 @@ impl Default for ActivityDensityResonator {
     }
 }
 
-impl Resonator for ActivityDensityResonator {
-    fn resonate(&self, history: &EntityHistory) -> TemporalFingerprint {
+impl ActivityDensityResonator {
+    /// Generate a fingerprint from the given history.
+    pub fn resonate(&self, history: &EntityHistory) -> TemporalFingerprint {
         let mut bins = vec![0.0; self.num_bins];
         let bin_size_us = self.window_size_us / self.num_bins as i64;
 
@@ -202,7 +197,7 @@ impl Resonator for ActivityDensityResonator {
 /// process over time to measure the degradation of content diversity.
 pub struct EchoChamber<'a> {
     db: &'a AletheiaDB,
-    resonator: Box<dyn Resonator>,
+    resonator: ActivityDensityResonator,
 }
 
 #[cfg(not(feature = "semantic-temporal"))]
@@ -251,13 +246,13 @@ impl<'a> EchoChamber<'a> {
     pub fn new(db: &'a AletheiaDB) -> Self {
         Self {
             db,
-            resonator: Box::new(ActivityDensityResonator::default()),
+            resonator: ActivityDensityResonator::default(),
         }
     }
 
     /// Configure the EchoChamber with a custom resonator.
-    pub fn with_resonator<R: Resonator + 'static>(mut self, resonator: R) -> Self {
-        self.resonator = Box::new(resonator);
+    pub fn with_resonator(mut self, resonator: ActivityDensityResonator) -> Self {
+        self.resonator = resonator;
         self
     }
 
@@ -318,7 +313,7 @@ impl<'a> EchoChamber<'a> {
     /// This method panics if the `nova` feature is not enabled.
     #[allow(unused_variables)]
     #[track_caller]
-    pub fn with_resonator<R: Resonator + 'static>(self, resonator: R) -> Self {
+    pub fn with_resonator(self, resonator: ActivityDensityResonator) -> Self {
         panic!(
             "EchoChamber requires the 'nova' feature. Add 'features = [\"nova\"]' to your Cargo.toml."
         );

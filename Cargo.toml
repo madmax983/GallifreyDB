@@ -925,6 +925,11 @@ required-features = ["semantic-search", "semantic-reasoning"]
 name = "bulk_import"
 required-features = ["import"]
 
+# Bolt profiling harness for bulk CSV node import (see PR history for measurements)
+[[example]]
+name = "bolt_profile_import"
+required-features = ["import"]
+
 [[bench]]
 name = "import_throughput"
 harness = false

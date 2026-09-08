@@ -14,6 +14,7 @@ pub mod ripple;
 pub mod sentinel;
 pub mod thermos;
 pub mod tremor;
+pub mod vortex;
 pub mod wormhole;
 
 // `paradox` is a stub awaiting revival — see CHANGELOG / ADR-0050.

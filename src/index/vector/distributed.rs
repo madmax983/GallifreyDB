@@ -1315,11 +1315,16 @@ impl MockVectorNodeClient {
 
     /// Make the next operation fail.
     pub fn fail_next(&self, error: impl Into<String>) {
-        *self.fail_next.write().unwrap() = Some(error.into());
+        if let Ok(mut lock) = self.fail_next.write() {
+            *lock = Some(error.into());
+        }
     }
 
     fn check_fail(&self) -> Result<()> {
-        if let Some(err) = self.fail_next.write().unwrap().take() {
+        let mut lock = self.fail_next.write().map_err(|_| {
+            Error::Vector(VectorError::IndexError("lock poisoned".into()))
+        })?;
+        if let Some(err) = lock.take() {
             return Err(Error::Vector(VectorError::IndexError(err)));
         }
         Ok(())
@@ -1381,7 +1386,7 @@ impl VectorNodeClient for MockVectorNodeClient {
             }));
         }
 
-        self.vectors.write().unwrap().insert(id, vector.to_vec());
+        self.vectors.write().map_err(|_| Error::Vector(VectorError::IndexError("lock poisoned".into())))?.insert(id, vector.to_vec());
         Ok(())
     }
 
@@ -1395,7 +1400,7 @@ impl VectorNodeClient for MockVectorNodeClient {
             ))));
         }
 
-        self.vectors.write().unwrap().remove(&id);
+        self.vectors.write().map_err(|_| Error::Vector(VectorError::IndexError("lock poisoned".into())))?.remove(&id);
         Ok(())
     }
 
@@ -1409,7 +1414,7 @@ impl VectorNodeClient for MockVectorNodeClient {
             ))));
         }
 
-        let vectors = self.vectors.read().unwrap();
+        let vectors = self.vectors.read().map_err(|_| Error::Vector(VectorError::IndexError("lock poisoned".into())))?;
         let mut results: Vec<(NodeId, f32)> = vectors
             .iter()
             .map(|(id, vec)| (*id, self.compute_similarity(query, vec)))
@@ -1431,7 +1436,7 @@ impl VectorNodeClient for MockVectorNodeClient {
             ))));
         }
 
-        Ok(self.vectors.read().unwrap().len())
+        Ok(self.vectors.read().map_err(|_| Error::Vector(VectorError::IndexError("lock poisoned".into())))?.len())
     }
 
     fn health_check(&self) -> Result<()> {
@@ -1455,6 +1460,52 @@ impl VectorNodeClient for MockVectorNodeClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_mock_vector_node_client_lock_poisoning() {
+        use std::panic;
+
+        let client = MockVectorNodeClient::new(0, 4, DistanceMetric::Cosine);
+        let node_id = NodeId::new(1).unwrap();
+        let vector = vec![1.0, 0.0, 0.0, 0.0];
+
+        // Intentionally poison the vectors lock
+        let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            let _lock = client.vectors.write().unwrap();
+            panic!("Poisoning vectors lock");
+        }));
+
+        // Intentionally poison the fail_next lock
+        let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            let _lock = client.fail_next.write().unwrap();
+            panic!("Poisoning fail_next lock");
+        }));
+
+        // Assert that methods return IndexError rather than panicking
+        let result = client.add(node_id, &vector);
+        assert!(matches!(
+            result,
+            Err(Error::Vector(VectorError::IndexError(_)))
+        ));
+
+        let result = client.remove(node_id);
+        assert!(matches!(
+            result,
+            Err(Error::Vector(VectorError::IndexError(_)))
+        ));
+
+        let result = client.search(&vector, 10);
+        assert!(matches!(
+            result,
+            Err(Error::Vector(VectorError::IndexError(_)))
+        ));
+
+        let result = client.len();
+        assert!(matches!(
+            result,
+            Err(Error::Vector(VectorError::IndexError(_)))
+        ));
+    }
 
     fn create_test_config(num_nodes: usize) -> DistributedVectorConfig {
         let mut config = DistributedVectorConfig::new(4, DistanceMetric::Cosine);

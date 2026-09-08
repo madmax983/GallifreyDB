@@ -37,3 +37,6 @@
 **[Fix `execute_traversal` target shards bug]**
 **Learning:** `plan.steps` from `route_traversal` returns empty list, and we need `involved_shards`
 **Action:** Replace `steps` with `involved_shards` and update the test.
+## MockVectorNodeClient Lock Poisoning
+**Learning:** `unwrap()` inside mock client trait implementations (like `MockVectorNodeClient` in `src/index/vector/distributed.rs`) poses a significant panic risk, similar to the previously discovered `MockShardClient`. A panic caused by a test thread holding the write lock can crash the entire test process or cause subsequent tests to fail with lock poisoning panics.
+**Action:** Consistently map `PoisonError` to a domain-specific error (`VectorError::IndexError` in this case) across all mock clients that use internal synchronization (`RwLock` or `Mutex`). Ensure explicit testing using `catch_unwind` is added to simulate and verify this resilience.

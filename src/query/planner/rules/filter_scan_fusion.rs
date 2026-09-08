@@ -174,16 +174,15 @@ mod tests {
         ));
 
         let result = rule.apply(&plan, &stats).unwrap();
-        assert!(result.is_some(), "Should fuse Filter+NodeScan");
 
-        let new_plan = result.unwrap();
-        match &new_plan.root {
-            LogicalOp::Scan(ScanOp::PropertyScan { label, key, .. }) => {
-                assert_eq!(label, "Person");
-                assert_eq!(key, "name");
-            }
-            other => panic!("Expected PropertyScan, got {:?}", other),
-        }
+        let expected_plan = LogicalPlan::new(LogicalOp::Scan(ScanOp::PropertyScan {
+            label: "Person".to_string(),
+            key: "name".to_string(),
+            value: crate::query::ir::PredicateValue::String("Alice".to_string()),
+        }));
+
+        assert_eq!(result, Some(expected_plan), "Should fuse Filter+NodeScan");
+
     }
 
     #[test]
@@ -239,7 +238,15 @@ mod tests {
         .with_temporal_context(TemporalContext::default());
 
         let result = rule.apply(&plan, &stats).unwrap();
-        assert!(result.is_some());
-        assert!(result.unwrap().temporal_context.is_some());
+
+        let expected_plan = LogicalPlan::new(LogicalOp::Scan(ScanOp::PropertyScan {
+            label: "Person".to_string(),
+            key: "name".to_string(),
+            value: crate::query::ir::PredicateValue::String("Alice".to_string()),
+        }))
+        .with_temporal_context(TemporalContext::default());
+
+        assert_eq!(result, Some(expected_plan));
+
     }
 }

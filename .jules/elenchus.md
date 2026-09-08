@@ -346,3 +346,10 @@
 **Finding:** The `LimitPushdown` tests originally missed several behavioral edge cases and logic checks, particularly regarding the propagation limits in BinaryOp combinations (`||`), updating limit values correctly against child bounds, and setting vector rank limits.
 **Evidence:** `cargo mutants` caught mutants in `LimitPushdown::push_down` specifically targeting the changed boolean condition logic and bounds assignment.
 **Recommendation:** Added `sentry_tests` to `LimitPushdown` that explicitly trigger tests enforcing the boolean change propagation, verifying that updated properties reflect correct nested limits, and vector bounds assignment. Tests now prevent `||` to `&&` mutations and correct top-k modifications.
+
+**[FilterScanFusion and LimitPushdown Weak Assertions]**
+**Module:** `src/query/planner/rules/`
+**Severity:** 🟢 Acquitted (Strengthened)
+**Finding:** The `FilterScanFusion`, `LimitPushdown` and `OperationReordering` tests contained multiple weak assertions using `assert!(result.is_some())` and `match` statements that failed to verify the full AST structure after optimization.
+**Evidence:** The unit tests redundantly asserted `is_some()` before checking equality, or just checked the root node without checking children nodes structure.
+**Recommendation:** Updated multiple unit tests in `src/query/planner/rules/filter_scan_fusion.rs`, `src/query/planner/rules/limit_pushdown.rs` and `src/query/planner/rules/operation_reordering.rs` to replace `assert!(result.is_some())` and manual `match` destructuring with a single robust `assert_eq!(result, Some(expected_plan))` check.

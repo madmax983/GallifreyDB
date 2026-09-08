@@ -238,10 +238,12 @@ let results = db.query()
 "Who does Alice know that's most similar to Bob?"
 
 ```rust
-let bob_embedding = db.get_node(bob_id)?
+let bob_node = db.get_node(bob_id)?;
+let bob_embedding = bob_node
     .get_property("embedding")
     .and_then(|p| p.as_vector())
-    .ok_or(Error::PropertyNotFound)?;
+    .ok_or(Error::other("Property not found"))?
+    .to_vec();
 
 let results = db.query()
     .start(alice_id)
@@ -493,7 +495,7 @@ use `find_similar_as_of_in("property", ...)` when you need a specific one.
 ### Common Errors
 
 ```rust
-use aletheiadb::utils::error::{Error, StorageError, VectorError};
+use aletheiadb::core::error::{Error, StorageError, VectorError};
 
 match results.next() {
     Some(Ok(row)) => { /* process row */ }
@@ -543,7 +545,7 @@ use aletheiadb::query::plan::IndexHint;
 db.query()
     .start(node_id)
     .with_hint(IndexHint::UseVectorIndex)  // Force vector index use
-    .with_hint(IndexHint::ForceScan)       // Skip indexes
+    .with_hint(IndexHint::UseBruteForce)   // Skip indexes
     // ...
 ```
 

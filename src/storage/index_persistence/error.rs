@@ -132,3 +132,50 @@ impl IndexPersistenceError {
 
 /// Result type for index persistence operations.
 pub type Result<T> = std::result::Result<T, IndexPersistenceError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    #[test]
+    fn should_return_true_for_not_found_io_error() {
+        let err =
+            IndexPersistenceError::Io(io::Error::new(io::ErrorKind::NotFound, "file not found"));
+        assert!(err.is_not_found());
+    }
+
+    #[test]
+    fn should_return_false_for_other_io_errors() {
+        let err = IndexPersistenceError::Io(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "permission denied",
+        ));
+        assert!(!err.is_not_found());
+    }
+
+    #[test]
+    fn should_return_false_for_non_io_errors() {
+        let err = IndexPersistenceError::MissingIndex {
+            name: "test".to_string(),
+        };
+        assert!(!err.is_not_found());
+    }
+
+    #[test]
+    fn should_convert_from_bitcode_error() {
+        // Generate a bitcode error by trying to decode empty bytes into a u32
+        let bitcode_err = bitcode::decode::<u32>(&[]).unwrap_err();
+        let err: IndexPersistenceError = bitcode_err.into();
+
+        match err {
+            IndexPersistenceError::Serialization(msg) => {
+                assert!(
+                    !msg.is_empty(),
+                    "Serialization error message should not be empty"
+                );
+            }
+            _ => panic!("Expected Serialization error"),
+        }
+    }
+}

@@ -1194,4 +1194,17 @@ mod tests {
             Predicate::Or(vec![Predicate::eq("a", 1), Predicate::eq("b", 2)])
         );
     }
+
+    #[test]
+    fn test_sentry_estimate_filter_selectivity_null_check() {
+        use crate::query::ir::PredicateValue;
+        let rule = OperationReordering;
+        let stats = Statistics::default();
+        let predicate = Predicate::Eq {
+            key: "test_key".to_string(),
+            value: PredicateValue::Null,
+        };
+        let selectivity = rule.estimate_filter_selectivity(&predicate, &stats);
+        assert_eq!(selectivity, NULL_CHECK_SELECTIVITY);
+    }
 }

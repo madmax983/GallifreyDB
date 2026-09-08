@@ -364,4 +364,15 @@ mod tests {
             _ => panic!("Expected SqlError::InvalidTemporalClause"),
         }
     }
+
+    #[test]
+    fn test_sentry_temporal_parse_timestamp_validates_sql_format_accurately() {
+        assert!(TemporalClause::parse_timestamp("1").is_ok());
+        assert!(TemporalClause::parse_timestamp("2024-01-15T10:00:00").is_ok());
+        assert!(TemporalClause::parse_timestamp("2024-01-15 10:00:00").is_ok());
+        assert!(TemporalClause::parse_timestamp("2024-01-15").is_ok());
+
+        let invalid = TemporalClause::parse_timestamp("2024-01-15 10:00:0");
+        assert!(invalid.is_err());
+    }
 }

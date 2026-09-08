@@ -56,11 +56,7 @@ pub struct WildfirePropagation {
 
 impl WildfirePropagation {
     /// Create a new WildfirePropagation model.
-    pub fn new(
-        temperatures: HashMap<NodeId, f32>,
-        base_alpha: f32,
-        temp_multiplier: f32,
-    ) -> Self {
+    pub fn new(temperatures: HashMap<NodeId, f32>, base_alpha: f32, temp_multiplier: f32) -> Self {
         Self {
             temperatures,
             base_alpha: base_alpha.clamp(0.0, 1.0),

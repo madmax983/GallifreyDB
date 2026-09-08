@@ -431,12 +431,14 @@ pub(crate) fn apply_edge_retract(
 ///
 /// * `tombstone_ids` - Iterator of pre-generated Version IDs for tombstones. This optimization
 ///   avoids acquiring the ID generator lock for every delete operation.
+///
+/// ⚡ Bolt Optimization: Uses `impl Iterator` to avoid a `.collect::<Vec<_>>` intermediate heap allocation.
 pub(crate) fn apply_single_write(
     tx: &WriteTransaction,
     write: &crate::api::transaction::BufferedWrite,
     commit_timestamp: Timestamp,
     historical: &mut HistoricalStorage,
-    tombstone_ids: &mut std::vec::IntoIter<u64>,
+    tombstone_ids: &mut impl Iterator<Item = u64>,
     num_deletes: usize,
 ) -> Result<()> {
     match write {
@@ -671,11 +673,7 @@ pub(crate) fn apply_changes<'a>(
     // so the identical ids are recorded in the WAL and applied here. We simply
     // replay them in the same buffer order they were generated and logged.
     let num_deletes = closing_version_ids.len();
-    let mut tombstone_ids = closing_version_ids
-        .iter()
-        .map(|v| v.as_u64())
-        .collect::<Vec<u64>>()
-        .into_iter();
+    let mut tombstone_ids = closing_version_ids.iter().map(|v| v.as_u64());
 
     for write in tx.buffer.operations() {
         apply_single_write(

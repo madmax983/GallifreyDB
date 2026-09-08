@@ -336,6 +336,8 @@ impl AletheiaDB {
 
     /// BFS the current graph from `start` up to `hops`, keeping only nodes/edges
     /// valid at the given bi-temporal coordinate. Returns `(nodes, edges)`.
+    ///
+    /// ⚡ Bolt Optimization: Pre-allocates and reuses `next` vector via `swap` and `clear` to eliminate O(hops) intermediate heap allocations during BFS traversal.
     fn collect_neighborhood(
         &self,
         start: NodeId,
@@ -346,6 +348,7 @@ impl AletheiaDB {
         let mut nodes: BTreeSet<u64> = BTreeSet::new();
         let mut edges: BTreeSet<u64> = BTreeSet::new();
         let mut frontier: Vec<NodeId> = Vec::new();
+        let mut next: Vec<NodeId> = Vec::new();
 
         if self.get_node_at_time(start, vt, tt).is_ok() {
             nodes.insert(start.as_u64());
@@ -353,12 +356,12 @@ impl AletheiaDB {
         }
 
         for _ in 0..hops {
-            let mut next = Vec::new();
-            for node in std::mem::take(&mut frontier) {
+            next.clear();
+            for node in &frontier {
                 for edge_id in self
-                    .get_outgoing_edges(node)
+                    .get_outgoing_edges(*node)
                     .into_iter()
-                    .chain(self.get_incoming_edges(node))
+                    .chain(self.get_incoming_edges(*node))
                 {
                     if self.get_edge_at_time(edge_id, vt, tt).is_err() {
                         continue;
@@ -379,7 +382,7 @@ impl AletheiaDB {
                     }
                 }
             }
-            frontier = next;
+            std::mem::swap(&mut frontier, &mut next);
         }
 
         let node_ids = nodes

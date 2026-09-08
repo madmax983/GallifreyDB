@@ -77,3 +77,11 @@
 **Pre-allocating Vec Capacities in Hot Paths**
 **Learning:** Pre-allocating standard Rust `Vec` objects using `Vec::with_capacity` in hot-paths like parsers and query planners eliminates unnecessary heap reallocations (0 -> 4 -> 8 -> 16 etc.), without changing semantics or causing borrow checker issues. However, if the expected bounds are wildly incorrect it could lead to memory bloat. A small capacity for small collections minimizes performance impacts in hot loops.
 **Action:** When a loop dynamically pushes elements to a new empty Vector (especially in repeated execution domains like parsers and network/storage iterators), replace `Vec::new()` with `Vec::with_capacity(n)` if a typical or max size `n` is roughly known.
+
+**Optimize BFS frontier logic with std::mem::swap**
+**Learning:** In a typical BFS loop (like `collect_neighborhood` in `src/audit/build.rs`), creating a new `Vec` for the `next` layer in every iteration causes O(hops) unnecessary heap allocations. Using `std::mem::take` inside the loop still drops the previous vector's capacity.
+**Action:** Allocate both `frontier` and `next` vectors outside the BFS loop. Inside the loop, use `next.clear()`, populate it, and then use `std::mem::swap(&mut frontier, &mut next)` at the end of the iteration to reuse both vector capacities, reducing allocations to just 1.
+
+**Optimize intermediate Vec allocations for iterators**
+**Learning:** Chaining `.collect::<Vec<_>>().into_iter()` simply to pass an iterator into a function forces a completely unnecessary heap allocation and a full pass over the data, as seen with `tombstone_ids` in `src/api/transaction/write/apply.rs`.
+**Action:** Remove the intermediate `.collect::<Vec<_>>()` and pass the raw iterator directly. If passing into a function, update the function signature from a specific iterator struct (like `std::vec::IntoIter<T>`) to `&mut impl Iterator<Item = T>`.

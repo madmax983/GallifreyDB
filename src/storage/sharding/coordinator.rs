@@ -549,15 +549,13 @@ impl ShardCoordinator {
         let prepare_timestamp = transaction.commit_timestamp;
 
         // Send prepare to all participants
-        let connections = match self.connections.read() {
-            Ok(connections) => connections,
-            Err(_) => {
-                transaction.phase = TransactionPhase::Pending;
-                self.reinsert_transaction(tx_id, transaction);
-                return Err(DistributedTxError::Aborted {
-                    reason: "Lock poisoned".to_string(),
-                });
-            }
+        let connections = self.connections.read().ok();
+        let Some(connections) = connections else {
+            transaction.phase = TransactionPhase::Pending;
+            self.reinsert_transaction(tx_id, transaction);
+            return Err(DistributedTxError::Aborted {
+                reason: "Lock poisoned".to_string(),
+            });
         };
 
         let mut unavailable_shards = Vec::new();
@@ -728,14 +726,12 @@ impl ShardCoordinator {
         }
 
         // Send commit to all participants with retry
-        let connections = match self.connections.read() {
-            Ok(connections) => connections,
-            Err(_) => {
-                self.reinsert_transaction(tx_id, transaction);
-                return Err(DistributedTxError::Aborted {
-                    reason: "Lock poisoned".to_string(),
-                });
-            }
+        let connections = self.connections.read().ok();
+        let Some(connections) = connections else {
+            self.reinsert_transaction(tx_id, transaction);
+            return Err(DistributedTxError::Aborted {
+                reason: "Lock poisoned".to_string(),
+            });
         };
 
         let mut unavailable_shards = Vec::new();
@@ -1966,6 +1962,36 @@ mod tests {
         assert!(second > first);
     }
 
+    #[cfg(loom)]
+    #[test]
+    fn test_havoc_loom_sharding_coordinator_deadlock() {
+        use loom::sync::{Arc, RwLock};
+        use loom::thread;
+
+        loom::model(|| {
+            let active_transactions = Arc::new(RwLock::new(()));
+            let connections = Arc::new(RwLock::new(()));
+
+            let tx1 = active_transactions.clone();
+            let conn1 = connections.clone();
+            let t1 = thread::spawn(move || {
+                let _c = conn1.read().unwrap();
+                drop(_c);
+                let _t = tx1.write().unwrap();
+            });
+
+            let tx2 = active_transactions.clone();
+            let conn2 = connections.clone();
+            let t2 = thread::spawn(move || {
+                let _t = tx2.write().unwrap();
+                let _c = conn2.write().unwrap();
+            });
+
+            t1.join().unwrap();
+            t2.join().unwrap();
+        });
+    }
+
     #[test]
     fn test_havoc_deadlock() {
         use std::sync::{Arc, RwLock};
@@ -1980,7 +2006,7 @@ mod tests {
         let t1 = thread::spawn(move || {
             let _c = conn1.read().unwrap();
             thread::sleep(Duration::from_millis(50));
-            // This simulates the missing drop(connections) before active_transactions.write()
+            drop(_c);
             let _t = tx1.write().unwrap();
         });
 

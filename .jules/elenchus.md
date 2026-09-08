@@ -346,3 +346,10 @@
 **Finding:** The `LimitPushdown` tests originally missed several behavioral edge cases and logic checks, particularly regarding the propagation limits in BinaryOp combinations (`||`), updating limit values correctly against child bounds, and setting vector rank limits.
 **Evidence:** `cargo mutants` caught mutants in `LimitPushdown::push_down` specifically targeting the changed boolean condition logic and bounds assignment.
 **Recommendation:** Added `sentry_tests` to `LimitPushdown` that explicitly trigger tests enforcing the boolean change propagation, verifying that updated properties reflect correct nested limits, and vector bounds assignment. Tests now prevent `||` to `&&` mutations and correct top-k modifications.
+
+**[AST Visitor Boolean Optimization Bugs]**
+**Module:** `src::query::planner::rules`
+**Severity:** 🟡 Suspect
+**Finding:** Multiple planner rules (`FilterScanFusion`, `LimitPushdown`, `OperationReordering`, `PredicatePushdown`) used weak boolean ORs (`||`) instead of boolean ANDs (`&&`) to bubble up `changed = true` status during AST visitor walks (e.g. `left_changed || right_changed`). Original test suites only triggered the `changed` state symmetrically (e.g. both sides changing, or the left side changing), masking `|| to &&` mutation escapes.
+**Evidence:** Cargo mutants revealed replacing `||` with `&&` caused zero test failures in `FilterScanFusion::fuse`, `LimitPushdown::push_down`, `OperationReordering::reorder`, and `PredicatePushdown::push_down`.
+**Recommendation:** Refactored tests across all four rules to include `sentry_tests` specifically targeting asymmetric AST branches (where only `left` or only `right` undergoes optimization, or when `changed` propagates through `Project` nodes), locking in the `changed || ...` logic to ensure partial optimizations always return `changed = true`.

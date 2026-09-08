@@ -243,3 +243,52 @@ mod tests {
         assert!(result.unwrap().temporal_context.is_some());
     }
 }
+
+#[cfg(test)]
+mod sentry_tests {
+    use super::*;
+    use crate::core::NodeId;
+    use crate::query::plan::{BinaryOp, ScanOp};
+
+    fn test_stats() -> Statistics {
+        Statistics::default()
+    }
+
+    #[test]
+    fn test_fuse_binary_partial_change() {
+        let rule = FilterScanFusion;
+        let stats = test_stats();
+
+        // Left branch: Filter(Eq) over NodeScan (Will change)
+        let left = LogicalOp::unary(
+            UnaryOp::Filter(Predicate::eq("name", "Alice")),
+            LogicalOp::Scan(ScanOp::NodeScan {
+                label: Some("Person".to_string()),
+                estimated_rows: None,
+            }),
+        );
+
+        // Right branch: Simple NodeLookup (Will NOT change)
+        let right = LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()]));
+
+        let plan = LogicalPlan::new(LogicalOp::binary(BinaryOp::Union, left, right));
+
+        let result = rule.apply(&plan, &stats).unwrap();
+
+        let expected_plan = LogicalPlan::new(LogicalOp::binary(
+            BinaryOp::Union,
+            LogicalOp::Scan(ScanOp::PropertyScan {
+                label: "Person".to_string(),
+                key: "name".to_string(),
+                value: crate::query::ir::PredicateValue::String("Alice".to_string()),
+            }),
+            LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()])),
+        ));
+
+        assert_eq!(
+            result,
+            Some(expected_plan),
+            "Partial optimization in left branch should propagate change = true"
+        );
+    }
+}

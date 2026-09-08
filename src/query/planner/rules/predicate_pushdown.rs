@@ -724,4 +724,56 @@ mod sentry_tests {
             "Partial optimization (left branch) should trigger change"
         );
     }
+
+    #[test]
+    fn test_binary_op_partial_change_right_side() {
+        let rule = PredicatePushdown;
+        let stats = Statistics::default();
+
+        // Left: Filter(Scan) -> Should NOT change
+        let left = LogicalOp::unary(
+            UnaryOp::Filter(Predicate::eq("a", 1)),
+            LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()])),
+        );
+
+        // Right: Filter(Sort(Scan)) -> Should change to Sort(Filter(Scan))
+        let right = LogicalOp::unary(
+            UnaryOp::Filter(Predicate::eq("b", 2)),
+            LogicalOp::unary(
+                UnaryOp::Sort {
+                    key: SortKey::Property("b".to_string()),
+                    descending: false,
+                },
+                LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()])),
+            ),
+        );
+
+        let plan = LogicalPlan::new(LogicalOp::binary(BinaryOp::Union, left, right));
+
+        let result = rule.apply(&plan, &stats).unwrap();
+
+        let expected_plan = LogicalPlan::new(LogicalOp::binary(
+            BinaryOp::Union,
+            LogicalOp::unary(
+                UnaryOp::Filter(Predicate::eq("a", 1)),
+                LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()])),
+            ),
+            LogicalOp::unary(
+                UnaryOp::Sort {
+                    key: SortKey::Property("b".to_string()),
+                    descending: false,
+                },
+                LogicalOp::unary(
+                    UnaryOp::Filter(Predicate::eq("b", 2)),
+                    LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()])),
+                ),
+            ),
+        ));
+
+        assert_eq!(
+            result,
+            Some(expected_plan),
+            "Partial optimization (right branch) should trigger change"
+        );
+    }
 }

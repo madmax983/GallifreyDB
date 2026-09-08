@@ -173,10 +173,11 @@ impl OperationReordering {
 
                 if filters.len() > 1 {
                     // Reorder filters by selectivity (most selective first = deepest)
-                    let reordered = self.reorder_filters(filters, base, stats)?;
+                    let (new_base, base_changed) = self.reorder(&base, stats)?;
+                    let reordered = self.reorder_filters(filters, new_base, stats)?;
                     // Check if order actually changed
-                    let changed = !self.filters_equal(op, &reordered);
-                    Ok((reordered, changed))
+                    let order_changed = !self.filters_equal(op, &reordered);
+                    Ok((reordered, base_changed || order_changed))
                 } else {
                     // Single filter or no filter - just recurse
                     if let LogicalOp::Unary {
@@ -1192,6 +1193,108 @@ mod tests {
         assert_ne!(
             Predicate::Or(vec![Predicate::eq("a", 1)]),
             Predicate::Or(vec![Predicate::eq("a", 1), Predicate::eq("b", 2)])
+        );
+    }
+}
+
+#[cfg(test)]
+mod sentry_tests {
+    use super::*;
+    use crate::core::NodeId;
+    use crate::query::plan::ScanOp;
+
+    fn test_stats() -> Statistics {
+        Statistics::default()
+    }
+
+    #[test]
+    fn test_reorder_binary_partial_change() {
+        let rule = OperationReordering;
+        let stats = test_stats();
+
+        // Left branch: Filter(Age > 30) -> Filter(Id == 1) -> Scan (Will be reordered because Eq is more selective)
+        let left = LogicalOp::unary(
+            UnaryOp::Filter(Predicate::eq("id", 1)),
+            LogicalOp::unary(
+                UnaryOp::Filter(Predicate::gt("age", 30)),
+                LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()])),
+            ),
+        );
+
+        // Right branch: Simple Scan (Will NOT change)
+        let right = LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()]));
+
+        let plan = LogicalPlan::new(LogicalOp::binary(
+            BinaryOp::Union,
+            left.clone(),
+            right.clone(),
+        ));
+
+        // We know that `rule.reorder(left)` should return `(optimized, true)`
+        // because filters are out of order (gt before eq).
+        // `rule.reorder(right)` should return `(right, false)`.
+        let result = rule.apply(&plan, &stats).unwrap();
+
+        let expected_plan = LogicalPlan::new(LogicalOp::binary(
+            BinaryOp::Union,
+            LogicalOp::unary(
+                UnaryOp::Filter(Predicate::gt("age", 30)),
+                LogicalOp::unary(
+                    UnaryOp::Filter(Predicate::eq("id", 1)),
+                    LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()])),
+                ),
+            ),
+            LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()])),
+        ));
+
+        assert_eq!(
+            result,
+            Some(expected_plan),
+            "Partial optimization in left branch should propagate change = true"
+        );
+    }
+
+    #[test]
+    fn test_reorder_unary_partial_change() {
+        let rule = OperationReordering;
+        let stats = test_stats();
+
+        // Nested inside Unary(Limit): Binary(Union, Left, Right)
+        let left = LogicalOp::unary(
+            UnaryOp::Filter(Predicate::eq("id", 1)),
+            LogicalOp::unary(
+                UnaryOp::Filter(Predicate::gt("age", 30)),
+                LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()])),
+            ),
+        );
+        let right = LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()]));
+
+        let plan = LogicalPlan::new(LogicalOp::unary(
+            UnaryOp::Limit(10),
+            LogicalOp::binary(BinaryOp::Union, left, right),
+        ));
+
+        let result = rule.apply(&plan, &stats).unwrap();
+
+        let expected_plan = LogicalPlan::new(LogicalOp::unary(
+            UnaryOp::Limit(10),
+            LogicalOp::binary(
+                BinaryOp::Union,
+                LogicalOp::unary(
+                    UnaryOp::Filter(Predicate::gt("age", 30)),
+                    LogicalOp::unary(
+                        UnaryOp::Filter(Predicate::eq("id", 1)),
+                        LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()])),
+                    ),
+                ),
+                LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()])),
+            ),
+        ));
+
+        assert_eq!(
+            result,
+            Some(expected_plan),
+            "Partial optimization inside Unary should propagate change = true"
         );
     }
 }

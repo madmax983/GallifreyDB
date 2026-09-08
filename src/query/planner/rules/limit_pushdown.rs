@@ -560,4 +560,77 @@ mod sentry_tests {
             panic!("Expected VectorRank");
         }
     }
+
+    #[test]
+    fn test_pushdown_unary_project_partial_change() {
+        let rule = LimitPushdown;
+        let stats = test_stats();
+
+        // Limit(5, Project(["a"], Limit(10, Scan))) -> Limit(5, Project(["a"], Limit(5, Scan)))
+        let plan = LogicalPlan::new(LogicalOp::unary(
+            UnaryOp::Limit(5),
+            LogicalOp::unary(
+                UnaryOp::Project(vec!["a".to_string()]),
+                LogicalOp::unary(
+                    UnaryOp::Limit(10),
+                    LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()])),
+                ),
+            ),
+        ));
+
+        let result = rule.apply(&plan, &stats).unwrap();
+
+        let expected_plan = LogicalPlan::new(LogicalOp::unary(
+            UnaryOp::Limit(5),
+            LogicalOp::unary(
+                UnaryOp::Project(vec!["a".to_string()]),
+                LogicalOp::unary(
+                    UnaryOp::Limit(5),
+                    LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()])),
+                ),
+            ),
+        ));
+
+        assert_eq!(
+            result,
+            Some(expected_plan),
+            "Limit pushdown through project should propagate changed = true"
+        );
+    }
+
+    #[test]
+    fn test_binary_partial_change_right() {
+        let rule = LimitPushdown;
+        let stats = test_stats();
+
+        // Left: Scan -> Scan [changed = false]
+        let left = LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()]));
+
+        // Right: Limit(10, Limit(20, Scan)) -> Limit(10, Scan) [changed = true]
+        let right = LogicalOp::unary(
+            UnaryOp::Limit(10),
+            LogicalOp::unary(
+                UnaryOp::Limit(20),
+                LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()])),
+            ),
+        );
+
+        let plan = LogicalPlan::new(LogicalOp::binary(BinaryOp::Union, left, right));
+
+        let result = rule.apply(&plan, &stats).unwrap();
+        let expected_plan = LogicalPlan::new(LogicalOp::binary(
+            BinaryOp::Union,
+            LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(1).unwrap()])),
+            LogicalOp::unary(
+                UnaryOp::Limit(10),
+                LogicalOp::Scan(ScanOp::NodeLookup(vec![NodeId::new(2).unwrap()])),
+            ),
+        ));
+
+        assert_eq!(
+            result,
+            Some(expected_plan),
+            "Partial optimization in right branch should propagate changed = true"
+        );
+    }
 }

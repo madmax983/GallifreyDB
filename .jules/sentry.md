@@ -37,3 +37,6 @@
 **[Fix `execute_traversal` target shards bug]**
 **Learning:** `plan.steps` from `route_traversal` returns empty list, and we need `involved_shards`
 **Action:** Replace `steps` with `involved_shards` and update the test.
+## PropertyMapBuilder Panic Testing
+**Learning:** `PropertyMapBuilder::insert` and `remove` correctly wrap their fallible counterparts (`try_insert` and `try_remove`) but expected a panic via `.expect()` on recursion depth exceeded, or failures.
+**Action:** Wrote explicit `#[should_panic]` unit tests ensuring that recursion limits are safely caught before crashing with an unexpected error message or causing UB.

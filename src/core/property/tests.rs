@@ -2578,4 +2578,57 @@ mod sentry_tests {
             "semantically_equal should treat NaN as equal"
         );
     }
+
+    #[test]
+    #[should_panic(expected = "Property insertion failed (recursion depth limit exceeded)")]
+    fn test_property_map_builder_insert_panics_on_deep_recursion() {
+        let mut value = PropertyValue::Int(42);
+        for _ in 0..MAX_RECURSION_DEPTH + 1 {
+            value = PropertyValue::Array(Arc::new(vec![value]));
+        }
+        let _ = PropertyMapBuilder::new().insert("deep", value);
+    }
+
+    #[test]
+    #[should_panic(expected = "Property insertion failed (recursion depth limit exceeded)")]
+    fn test_property_map_builder_insert_by_key_panics_on_deep_recursion() {
+        let mut value = PropertyValue::Int(42);
+        for _ in 0..MAX_RECURSION_DEPTH + 1 {
+            value = PropertyValue::Array(Arc::new(vec![value]));
+        }
+        let key = GLOBAL_INTERNER.intern("deep").unwrap();
+        let _ = PropertyMapBuilder::new().insert_by_key(key, value);
+    }
+
+    #[test]
+    #[should_panic(expected = "Property removal failed")]
+    fn test_property_map_builder_remove_panics_on_deep_recursion() {
+        let mut value = PropertyValue::Int(42);
+        for _ in 0..MAX_RECURSION_DEPTH + 1 {
+            value = PropertyValue::Array(Arc::new(vec![value]));
+        }
+
+        let mut builder = PropertyMapBuilder::new();
+        // Insert directly to bypass try_insert's checks
+        let key = GLOBAL_INTERNER.intern("deep").unwrap();
+        builder.map.insert(key, value);
+
+        let _ = builder.remove("deep");
+    }
+
+    #[test]
+    #[should_panic(expected = "Property removal failed")]
+    fn test_property_map_builder_remove_by_key_panics_on_deep_recursion() {
+        let mut value = PropertyValue::Int(42);
+        for _ in 0..MAX_RECURSION_DEPTH + 1 {
+            value = PropertyValue::Array(Arc::new(vec![value]));
+        }
+
+        let mut builder = PropertyMapBuilder::new();
+        // Insert directly to bypass try_insert's checks
+        let key = GLOBAL_INTERNER.intern("deep").unwrap();
+        builder.map.insert(key, value);
+
+        let _ = builder.remove_by_key(&key);
+    }
 }

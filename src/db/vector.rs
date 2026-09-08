@@ -449,12 +449,29 @@ impl AletheiaDB {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```rust
+    /// # use aletheiadb::{AletheiaDB, WriteOps, properties};
+    /// # use aletheiadb::index::vector::{HnswConfig, DistanceMetric};
+    /// # use aletheiadb::core::error::Error;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let dir = tempfile::tempdir()?;
+    /// # let db = AletheiaDB::open(dir.path())?;
+    /// # db.enable_vector_index("title_embedding", HnswConfig::new(16, DistanceMetric::Cosine))?;
+    /// # db.enable_vector_index("body_embedding", HnswConfig::new(16, DistanceMetric::Cosine))?;
+    /// # let node_id = db.write(|tx| -> Result<_, Error> {
+    /// #     let id = tx.create_node("Doc", properties! {
+    /// #         "title_embedding" => vec![0.1_f32; 16],
+    /// #         "body_embedding" => vec![0.2_f32; 16]
+    /// #     })?;
+    /// #     Ok(id)
+    /// # })?;
     /// // Search title embeddings for similar nodes
     /// let similar = db.find_similar_in("title_embedding", node_id, 10)?;
     ///
     /// // Search body embeddings (different property, potentially different results)
     /// let similar_body = db.find_similar_in("body_embedding", node_id, 10)?;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -549,9 +566,25 @@ impl AletheiaDB {
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// use aletheiadb::SimilarityQuery;
-    ///
+    /// ```rust
+    /// # use aletheiadb::{AletheiaDB, WriteOps, properties, SimilarityQuery};
+    /// # use aletheiadb::index::vector::{HnswConfig, DistanceMetric};
+    /// # use aletheiadb::index::vector::temporal::TemporalVectorConfig;
+    /// # use aletheiadb::core::error::Error;
+    /// # use aletheiadb::core::temporal::time::now;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let dir = tempfile::tempdir()?;
+    /// # let db = AletheiaDB::open(dir.path())?;
+    /// # db.enable_vector_index("embedding", HnswConfig::new(16, DistanceMetric::Cosine))?;
+    /// # db.enable_temporal_vector_index("embedding", TemporalVectorConfig::default_with_hnsw(HnswConfig::new(16, DistanceMetric::Cosine)))?;
+    /// # let doc_id = db.write(|tx| -> Result<_, Error> {
+    /// #     let id = tx.create_node("Document", properties! {
+    /// #         "embedding" => vec![0.1_f32; 16]
+    /// #     })?;
+    /// #     Ok(id)
+    /// # })?;
+    /// # let ts = now();
+    /// # let query_embedding = vec![0.2_f32; 16];
     /// // Find similar Documents to an existing node.
     /// let results = db.similarity_search(
     ///     SimilarityQuery::from_node(doc_id).k(5).with_label("Document"),
@@ -561,6 +594,8 @@ impl AletheiaDB {
     /// let results = db.similarity_search(
     ///     SimilarityQuery::from_embedding(&query_embedding).k(10).at_time(ts),
     /// )?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[must_use = "this Result must be used; ignoring errors can lead to silent failures"]
     pub fn similarity_search(&self, query: SimilarityQuery) -> Result<Vec<(NodeId, f32)>> {

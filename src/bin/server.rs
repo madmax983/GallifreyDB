@@ -26,7 +26,7 @@
 //! - `ALETHEIADB_CORS_PERMISSIVE`: Set to "true" to allow any origin (default: false)
 //! - `ALETHEIADB_CORS_ORIGINS`: Comma-separated list of allowed origins
 //! - `ALETHEIADB_CONFIG`: Path to a TOML config file consumed by
-//!   [`AletheiaDBConfig::from_toml_file`]. Takes precedence over
+//!   `AletheiaDBConfig::from_toml_file`. Takes precedence over
 //!   `ALETHEIADB_DATA_DIR`.
 //! - `ALETHEIADB_DATA_DIR`: Directory for WAL + index persistence. When set,
 //!   the server persists state across restarts. When unset (and `ALETHEIADB_CONFIG`

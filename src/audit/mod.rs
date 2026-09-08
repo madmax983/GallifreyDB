@@ -20,7 +20,7 @@
 //! The artifact is JSON ([`AuditExport`]). Its signature is computed over a
 //! deterministic canonical *binary* encoding of the typed content (not the JSON
 //! text), so reformatting is safe but any content change is caught. See the
-//! [`canonical`] module and `docs/guides/audit-export.md` for the fully
+//! `canonical` module and `docs/guides/audit-export.md` for the fully
 //! documented, independently-implementable format.
 //!
 //! # Quick start

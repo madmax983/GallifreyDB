@@ -27,7 +27,7 @@ pub mod wal {
     /// `version_id` (#3406, v9) — leaving the buffer misaligned so the entry
     /// checksum fails (see `wal_entry_parsing` fuzz regressions below).
     ///
-    /// We derive the version from [`segment_reader::newest_plaintext_wal_version`]
+    /// We derive the version from `segment_reader::newest_plaintext_wal_version`
     /// (itself derived from `WAL_VERSION_MAX`) rather than hardcoding a byte, so
     /// this harness can never lag a future WAL format bump.
     ///

@@ -346,3 +346,10 @@
 **Finding:** The `LimitPushdown` tests originally missed several behavioral edge cases and logic checks, particularly regarding the propagation limits in BinaryOp combinations (`||`), updating limit values correctly against child bounds, and setting vector rank limits.
 **Evidence:** `cargo mutants` caught mutants in `LimitPushdown::push_down` specifically targeting the changed boolean condition logic and bounds assignment.
 **Recommendation:** Added `sentry_tests` to `LimitPushdown` that explicitly trigger tests enforcing the boolean change propagation, verifying that updated properties reflect correct nested limits, and vector bounds assignment. Tests now prevent `||` to `&&` mutations and correct top-k modifications.
+
+## [Cypher Aggregation Iterators Error Propagation]
+**Module:** `src/query/executor/iterators.rs`
+**Verdict:** 🟡 Suspect
+**Finding:** Mutation testing revealed that the `drain` method on `AggregateIterator` can be replaced with `Ok(())` (or its error propagation can be bypassed) without failing tests focused on the "happy path" of aggregation logic. The underlying issue is that there are no tests specifically asserting that if the *input* iterator to an `AggregateIterator` (or potentially `SortIterator`, `DistinctIterator`) yields an error during the buffering/draining phase, that error must be correctly propagated up to the caller rather than swallowed or panicked.
+**Evidence:** `cargo mutants` run against `src/query/executor/iterators.rs` showed a mutation replacing `AggregateIterator::drain -> Result<()>` with `Ok(())`. While Cypher E2E tests (`test_agg_*` in `src/cypher/tests.rs`) thoroughly test the data correctness and grouping logic (so replacing drain completely would break E2E), there's a gap in explicit unit-level error propagation testing for these batching iterators.
+**Recommendation:** Added `aggregate_sentry_tests` and `distinct_sentry_tests` inside `src/query/executor/iterators.rs` using a `MockIterator` returning an error to ensure that `AggregateIterator`, `SortIterator`, and `DistinctIterator` correctly propagate errors returned by their input's `next()` method.

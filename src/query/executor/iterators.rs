@@ -8831,3 +8831,76 @@ mod tests {
         assert!(dropped.next().is_none());
     }
 }
+
+#[cfg(test)]
+mod aggregate_sentry_tests {
+    use super::*;
+    use crate::Error;
+    use crate::core::error::QueryError;
+
+    // Helper mock iterator that returns an error
+    struct ErrorIterator;
+    impl ResultIterator for ErrorIterator {
+        fn next(&mut self) -> Option<Result<QueryRow>> {
+            Some(Err(Error::Query(QueryError::SyntaxError {
+                message: "mock error".into(),
+            })))
+        }
+    }
+
+    #[test]
+    fn test_aggregate_iterator_propagates_errors() {
+        let input = Box::new(ErrorIterator);
+        let mut it = AggregateIterator::new(input, vec![], vec![]);
+
+        let res = it.next();
+        assert!(res.is_some());
+        let err = res.unwrap().unwrap_err();
+        assert!(
+            matches!(err, Error::Query(QueryError::SyntaxError { message }) if message == "mock error")
+        );
+    }
+
+    #[test]
+    fn test_sort_iterator_propagates_errors() {
+        let input = Box::new(ErrorIterator);
+        let mut it = SortIterator::new(input, vec![]);
+
+        let res = it.next();
+        assert!(res.is_some());
+        let err = res.unwrap().unwrap_err();
+        assert!(
+            matches!(err, Error::Query(QueryError::SyntaxError { message }) if message == "mock error")
+        );
+    }
+}
+
+#[cfg(test)]
+mod distinct_sentry_tests {
+    use super::*;
+    use crate::Error;
+    use crate::core::error::QueryError;
+
+    // Helper mock iterator that returns an error
+    struct ErrorIterator;
+    impl ResultIterator for ErrorIterator {
+        fn next(&mut self) -> Option<Result<QueryRow>> {
+            Some(Err(Error::Query(QueryError::SyntaxError {
+                message: "mock error".into(),
+            })))
+        }
+    }
+
+    #[test]
+    fn test_distinct_iterator_propagates_errors() {
+        let input = Box::new(ErrorIterator);
+        let mut it = DistinctIterator::new(input);
+
+        let res = it.next();
+        assert!(res.is_some());
+        let err = res.unwrap().unwrap_err();
+        assert!(
+            matches!(err, Error::Query(QueryError::SyntaxError { message }) if message == "mock error")
+        );
+    }
+}

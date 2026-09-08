@@ -19,3 +19,4 @@ pub mod synapse;
 // `wildfire` is a stub awaiting revival — see CHANGELOG / ADR-0050.
 // pub mod wildfire;
 pub mod starlight;
+pub mod wanderer;

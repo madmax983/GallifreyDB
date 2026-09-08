@@ -80,6 +80,8 @@ use aletheiadb::storage::{
 };
 use std::sync::Arc;
 
+let mut historical = HistoricalStorage::new();
+
 // 1. Create Redb cold storage
 let cold = Arc::new(RedbColdStorage::new("data/cold.redb", RedbConfig::new())?);
 

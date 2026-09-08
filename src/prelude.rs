@@ -8,6 +8,11 @@
 //! ```rust
 //! use aletheiadb::prelude::*;
 //! ```
+//!
+//! > **Note:** This module exports a custom `Result` type (`aletheiadb::Result<T>`)
+//! > which shadows `std::result::Result`. If your code specifies `Result` with two
+//! > generic parameters (e.g., `Result<(), Box<dyn std::error::Error>>`), you must
+//! > fully qualify it as `std::result::Result` to avoid compiler errors.
 
 pub use crate::AletheiaDB;
 pub use crate::api::{ReadOps, ReadTransaction, WriteOps, WriteTransaction};

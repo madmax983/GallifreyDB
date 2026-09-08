@@ -104,7 +104,7 @@ impl<'a> Archetype<'a> {
         }
 
         // Sort by purity descending
-        node_results.sort_by(|a, b| b.purity_score.partial_cmp(&a.purity_score).unwrap());
+        node_results.sort_by(|a, b| b.purity_score.total_cmp(&a.purity_score));
 
         Ok(ArchetypeResult {
             centroid,
@@ -262,5 +262,40 @@ mod tests {
 
         // Nodes should be sorted by purity (highest first)
         assert_eq!(result.nodes[2].node_id, outlier);
+    }
+
+    #[test]
+    fn test_archetype_nan_vectors_do_not_panic() {
+        let db = AletheiaDB::new().unwrap();
+
+        let mut n1 = NodeId::new(0).unwrap();
+        let mut n2 = NodeId::new(0).unwrap();
+
+        db.write(|tx| {
+            n1 = tx
+                .create_node(
+                    "Node",
+                    PropertyMapBuilder::new()
+                        .insert_vector("embedding", &[1.0, f32::NAN])
+                        .build(),
+                )
+                .unwrap();
+
+            n2 = tx
+                .create_node(
+                    "Node",
+                    PropertyMapBuilder::new()
+                        .insert_vector("embedding", &[f32::NAN, 1.0])
+                        .build(),
+                )
+                .unwrap();
+            Ok::<(), Error>(())
+        })
+        .unwrap();
+
+        let archetype = Archetype::new(&db);
+        let result = archetype.analyze(&[n1, n2], "embedding").unwrap();
+
+        assert_eq!(result.nodes.len(), 2);
     }
 }

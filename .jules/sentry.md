@@ -37,3 +37,6 @@
 **[Fix `execute_traversal` target shards bug]**
 **Learning:** `plan.steps` from `route_traversal` returns empty list, and we need `involved_shards`
 **Action:** Replace `steps` with `involved_shards` and update the test.
+**f32::partial_cmp panics on NaN when unwrap() is used**
+**Learning:** Sorting vectors of floats using `.partial_cmp(...).unwrap()` panics if any of the float values are `NaN` because `partial_cmp` returns `None` for `NaN` comparisons.
+**Action:** Always use `.total_cmp(...)` instead when sorting floats to safely handle `NaN` and `Infinity` according to IEEE 754 total ordering rules.

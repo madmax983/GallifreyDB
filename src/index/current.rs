@@ -145,11 +145,19 @@ pub struct CurrentIndexes {
     /// Secondary namespace → member-edge membership index (Issue #3349, PR2).
     /// The edge counterpart of [`ns_nodes`](Self::ns_nodes); see its docs.
     ns_edges: DashMap<NamespaceId, DashSet<EdgeId, IdHashBuilder>, IdHashBuilder>,
-    /// Opt-in registry of `(label_id, prop_key_id)` pairs that have a secondary
-    /// equality index enabled. Empty by default — the property-index maintenance
-    /// hooks in `insert_node` / `remove_node` short-circuit on `is_empty()`, so a
-    /// database with no property index pays only that check on the write path.
-    prop_index_enabled: DashMap<(InternedString, InternedString), ()>,
+    /// Opt-in registry of labels with a secondary equality index enabled,
+    /// mapping each label to its enabled property keys. Empty by default —
+    /// the property-index maintenance hooks in `insert_node` / `remove_node`
+    /// short-circuit on `is_empty()`, so a database with no property index
+    /// pays only that check on the write path.
+    ///
+    /// Keyed by label (rather than a flat `(label, key)` set) so the write
+    /// path can reach the handful of keys relevant to *this* node with a
+    /// single `DashMap::get` (one shard, no allocation) instead of a full
+    /// `DashMap::iter()` — which pays one `Arc<RwLockReadGuard>` allocation
+    /// per shard (16 by default) just to walk past the empty ones, even when
+    /// only one or two `(label, key)` pairs are enabled process-wide.
+    prop_index_enabled: DashMap<InternedString, Vec<InternedString>>,
     /// Secondary equality index: `(label_id, prop_key_id, ValueKey)` → the set of
     /// node ids currently holding that value.
     ///
@@ -390,14 +398,14 @@ impl CurrentIndexes {
         new_label: InternedString,
         new_props: &PropertyMap,
     ) {
-        for entry in self.prop_index_enabled.iter() {
-            let (lbl, key) = *entry.key();
-            let is_old = Some(lbl) == old_label;
-            let is_new = lbl == new_label;
-            if !is_old && !is_new {
-                continue;
-            }
-            if is_old && is_new {
+        if old_label == Some(new_label) {
+            // Same-label create/update: only the `new_label` bucket of keys is
+            // relevant, and each matching key may move value buckets.
+            let Some(keys) = self.prop_index_enabled.get(&new_label) else {
+                return;
+            };
+            for key in keys.value().iter().copied() {
+                let lbl = new_label;
                 // Same-label create/update: move the value bucket only if it
                 // actually changed.
                 let old_vk = old_props
@@ -416,7 +424,16 @@ impl CurrentIndexes {
                         .or_default()
                         .insert(id);
                 }
-            } else if is_old {
+            }
+            return;
+        }
+        // Label changed (or a fresh create): the old and new labels' enabled
+        // keys are independent, so de-index under the old label and index
+        // under the new one separately.
+        if let Some(lbl) = old_label
+            && let Some(keys) = self.prop_index_enabled.get(&lbl)
+        {
+            for key in keys.value().iter().copied() {
                 // Label changed away from `lbl`: drop the node's old value.
                 if let Some(ov) = old_props
                     .and_then(|p| p.get_by_interned_key(&key))
@@ -424,7 +441,14 @@ impl CurrentIndexes {
                 {
                     self.prop_index_remove((lbl, key, ov), id);
                 }
-            } else {
+            }
+        }
+        {
+            let lbl = new_label;
+            let Some(keys) = self.prop_index_enabled.get(&lbl) else {
+                return;
+            };
+            for key in keys.value().iter().copied() {
                 // Label changed to `lbl` (or a fresh create under `lbl`): add the
                 // node's new value.
                 if let Some(nv) = new_props.get_by_interned_key(&key).and_then(value_key) {
@@ -884,19 +908,17 @@ impl CurrentIndexes {
             }
             // Drop the node from every enabled property-index value bucket. This
             // single choke point covers plain delete, cascade delete, and
-            // retraction (they all land on `remove_node`).
-            if !self.prop_index_enabled.is_empty() {
-                for entry in self.prop_index_enabled.iter() {
-                    let (lbl, key) = *entry.key();
-                    if lbl != node.label {
-                        continue;
-                    }
+            // retraction (they all land on `remove_node`). A single `get` by
+            // this node's label (one shard, no allocation) replaces walking
+            // every enabled `(label, key)` pair.
+            if let Some(keys) = self.prop_index_enabled.get(&node.label) {
+                for key in keys.value().iter().copied() {
                     if let Some(vk) = node
                         .properties
                         .get_by_interned_key(&key)
                         .and_then(value_key)
                     {
-                        self.prop_index_remove((lbl, key, vk), id);
+                        self.prop_index_remove((node.label, key, vk), id);
                     }
                 }
             }
@@ -1004,7 +1026,11 @@ impl CurrentIndexes {
     /// flag flips, and the flag's release on the `prop_index_enabled` shard
     /// happens-after all bucket writes.
     pub fn enable_property_index(&self, label: InternedString, prop_key: InternedString) -> bool {
-        if self.prop_index_enabled.contains_key(&(label, prop_key)) {
+        if self
+            .prop_index_enabled
+            .get(&label)
+            .is_some_and(|keys| keys.contains(&prop_key))
+        {
             return false;
         }
         // Defensively clear any stale buckets a prior disable may have left for
@@ -1033,15 +1059,34 @@ impl CurrentIndexes {
         // Publish the flag last (see the release-ordering note above). Enable
         // calls are serialized by the caller's write lock, so the
         // check-then-insert cannot race another enable.
-        self.prop_index_enabled.insert((label, prop_key), ());
+        self.prop_index_enabled
+            .entry(label)
+            .or_default()
+            .push(prop_key);
         true
     }
 
     /// Disable the equality index for `(label, prop_key)` and purge its buckets.
     /// Returns `false` if no index was enabled for the pair.
     pub fn disable_property_index(&self, label: InternedString, prop_key: InternedString) -> bool {
-        if self.prop_index_enabled.remove(&(label, prop_key)).is_none() {
+        let Some(mut keys) = self.prop_index_enabled.get_mut(&label) else {
             return false;
+        };
+        let before = keys.len();
+        keys.retain(|k| *k != prop_key);
+        if keys.len() == before {
+            return false;
+        }
+        let now_empty = keys.is_empty();
+        drop(keys);
+        // Reclaim a fully-drained label entry so `prop_index_enabled.is_empty()`
+        // stays accurate once every index is disabled (mirrors the `ns_nodes`
+        // reclaim elsewhere in this file: the write guard above is dropped
+        // before `remove_if`, which re-checks emptiness under the shard lock,
+        // so a concurrent enable racing the reclaim never loses its entry).
+        if now_empty {
+            self.prop_index_enabled
+                .remove_if(&label, |_, v| v.is_empty());
         }
         self.prop_index
             .retain(|k, _| !(k.0 == label && k.1 == prop_key));
@@ -1051,12 +1096,22 @@ impl CurrentIndexes {
     /// Whether an equality index is enabled for `(label, prop_key)`.
     #[inline]
     pub fn has_property_index(&self, label: InternedString, prop_key: InternedString) -> bool {
-        self.prop_index_enabled.contains_key(&(label, prop_key))
+        self.prop_index_enabled
+            .get(&label)
+            .is_some_and(|keys| keys.contains(&prop_key))
     }
 
     /// The `(label_id, prop_key_id)` pairs with an enabled equality index.
+    ///
+    /// Not on the write hot path (unlike `reindex_node_property`/`remove_node`),
+    /// so the `DashMap::iter()` shard-walk cost here is fine.
     pub fn property_index_pairs(&self) -> Vec<(InternedString, InternedString)> {
-        self.prop_index_enabled.iter().map(|e| *e.key()).collect()
+        let mut pairs = Vec::new();
+        for entry in self.prop_index_enabled.iter() {
+            let label = *entry.key();
+            pairs.extend(entry.value().iter().map(|&key| (label, key)));
+        }
+        pairs
     }
 
     /// Probe the equality index for the node ids currently holding `value` under

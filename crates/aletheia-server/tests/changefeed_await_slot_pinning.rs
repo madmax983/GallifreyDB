@@ -460,6 +460,21 @@ async fn await_disconnect_releases_slot_under_two_seconds() {
 
 // ── (b + #3688): reconnect churn never falsely exhausts the quota ─────────────
 
+/// Bound for the churn test's per-round reap wait. Deliberately generous:
+/// this test's subject is churn *accumulation* (repeated saturate→abort→reap
+/// never falsely exhausting the quota), not reap latency -- the
+/// prompt-disconnect timing is pinned by the other tests in this file
+/// against the 5s `SLOT_RELEASE_BOUND`. 30s still REDs the #3688 regression
+/// with 2x margin (the await-path bug lingered up to the full 60s
+/// `timeout_ms`).
+const CHURN_REAP_BOUND: Duration = Duration::from_secs(30);
+
+/// Saturate→abort→reap rounds. Five rounds still exercise churn accumulation
+/// (each round independently re-saturates the cap after a full reap); ten
+/// doubled the exposure window on oversubscribed CI runners without adding
+/// signal (Issue #3814).
+const CHURN_ROUNDS: usize = 5;
+
 /// Rapid open→disconnect churn near the per-principal cap never falsely exhausts
 /// the quota: each disconnect frees its slot promptly (event-driven) so the next
 /// open always fits. RED if stale slots linger 15/60s and accumulate past the
@@ -481,7 +496,7 @@ async fn reconnect_churn_no_false_exhaustion() {
         AuthMode::Required,
     ));
 
-    for round in 0..10 {
+    for round in 0..CHURN_ROUNDS {
         // Saturate the ENTIRE per-principal cap with concurrent long-polls, then
         // abort them all at once. Under the #3688 bug the aborted slots linger
         // (15/60s), so the cap stays occupied and the next subscribe is falsely
@@ -514,21 +529,34 @@ async fn reconnect_churn_no_false_exhaustion() {
             );
             task.abort();
         }
+        // Awaiting the aborted tasks guarantees client-side teardown (request
+        // future dropped, connection torn down) completes BEFORE the reap
+        // bound below starts ticking: the bound then measures only
+        // server-side slot release. Without this, abort-scheduling delay on a
+        // loaded runner eats into the reap budget (Issue #3814).
+        for task in tasks {
+            let _ = task.await;
+        }
 
         // DISTINCTIVE #3688 guard: with the cap just saturated and every holder
-        // aborted, a fresh subscribe WITHIN the cap must succeed once the stale
-        // slots are reaped. Under the bug they linger and this stays exhausted
-        // (Err/UNAVAILABLE) for the whole bound — false-exhaustion.
-        let recovered = wait_until(SLOT_RELEASE_BOUND, || {
-            db.subscribe_changes_for_principal(Some(&reader_id), ChangeFilter::all())
-                .is_ok()
-        })
-        .await;
+        // aborted, the reap must be COMPLETE -- the principal's live count
+        // returns to zero -- before the next round. Waiting only for "a fresh
+        // subscribe fits" (the old probe) can succeed on a PARTIAL reap; the
+        // next round then saturates via a stale+new mix and its rejected
+        // long-poll trips the `is_finished` assert above -- a per-round
+        // release-timing race the old comment claimed this test didn't have
+        // (Issue #3814). Under the #3688 bug the slots linger and the count
+        // never reaches zero within the bound -- false-exhaustion.
+        let reaped = wait_until(CHURN_REAP_BOUND, || principal_count(&db, &reader_id) == 0).await;
         assert!(
-            recovered.is_some(),
-            "round {round}: quota falsely exhausted after churn — aborted slots \
-             not reaped within the cap (#3688 false-exhaustion)"
+            reaped.is_some(),
+            "round {round}: aborted slots not fully reaped within {CHURN_REAP_BOUND:?} -- \
+             quota would falsely exhaust on the next round (#3688 false-exhaustion)"
         );
+
+        // And the quota genuinely fits again after the churn.
+        db.subscribe_changes_for_principal(Some(&reader_id), ChangeFilter::all())
+            .expect("round {round}: quota falsely exhausted after churn");
     }
 
     // Fully released; a fresh CAP subscribes succeed and the CAP+1 is rejected.

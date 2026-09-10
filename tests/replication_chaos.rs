@@ -118,9 +118,27 @@ use serial_test::serial;
 /// this back up is a one-line change once that bug is fixed.
 const NUM_WRITERS: usize = 1;
 const TARGET_TOTAL_ACKED: usize = 2000;
-/// Bound on the load-generation phase, so a stalled writer can't hang the
-/// whole suite.
+/// Bound on the load-generation phase before the self-calibration below
+/// kicks in, so a stalled writer can't hang the whole suite. Once
+/// `CALIBRATION_WRITES` acknowledged writes are in, the deadline is rescaled
+/// from this runner's measured write rate (see the load loop).
 const LOAD_DEADLINE: Duration = Duration::from_secs(40);
+/// Acknowledged writes after which the load deadline self-calibrates (Issue
+/// #3814): the load phase's purpose is "get enough acknowledged writes to
+/// kill the primary mid-load", not "prove a throughput SLO", so instead of
+/// asserting a disk-latency floor (2000 Synchronous fsync-bound writes in
+/// 40s -- ~50/s sustained, which a shared 2-core Windows runner cannot
+/// guarantee), the test measures its own write rate under true load
+/// conditions and grants itself headroom from there.
+const CALIBRATION_WRITES: usize = 200;
+/// Headroom multiplier applied to the calibrated rate when rescaling the
+/// load deadline. The observed #3814 shortfall was ~11%; 4x absorbs that
+/// with wide margin while still bounding a truly stalled writer.
+const CALIBRATION_HEADROOM: f64 = 4.0;
+/// Hard bounds on the calibrated deadline: never shorter than the old fixed
+/// deadline, never long enough to hang the suite on a pathological runner.
+const LOAD_DEADLINE_MIN: Duration = Duration::from_secs(60);
+const LOAD_DEADLINE_MAX: Duration = Duration::from_secs(300);
 /// Bound on waiting for the replica to settle (stop making progress) after
 /// the replication server goes down.
 const SETTLE_DEADLINE: Duration = Duration::from_secs(10);
@@ -197,7 +215,20 @@ fn op_present(db: &AletheiaDB, op: &AckedOp) -> bool {
                 })
                 .unwrap_or(false)
         }
-        AckedOp::Delete { id } => db.get_node(*id).is_err(),
+        AckedOp::Delete { id } => {
+            // A delete is present only if the node was actually deleted, not
+            // merely absent: if the create never arrived on the replica
+            // (get_node_history errors or is empty), the delete is also
+            // missing -- suffix loss, not a hole. Checking only
+            // `get_node().is_err()` falsely reports "present" for a
+            // never-created node, turning plain replication lag into a
+            // phantom hole panic (Issue #3814 verification).
+            let ever_existed = db
+                .get_node_history(*id)
+                .map(|history| !history.versions.is_empty())
+                .unwrap_or(false);
+            ever_existed && db.get_node(*id).is_err()
+        }
     }
 }
 
@@ -335,6 +366,13 @@ fn primary_kill_mid_load_promotes_replica_with_bounded_loss() {
 
     let load_start = Instant::now();
     let mut last_seen_error: Option<String> = None;
+    // Self-calibrating deadline (Issue #3814): once CALIBRATION_WRITES writes
+    // are acknowledged, rescale the deadline from this runner's measured
+    // write rate under true load (writer thread + streaming replica, both
+    // fsync-bound). Until then the pre-calibration LOAD_DEADLINE bounds a
+    // stalled writer.
+    let mut load_deadline = LOAD_DEADLINE;
+    let mut calibrated = false;
     let total_before_kill = loop {
         if let Some(p) = replica.replication_progress()
             && let Some(e) = p.last_error
@@ -344,14 +382,25 @@ fn primary_kill_mid_load_promotes_replica_with_bounded_loss() {
             last_seen_error = Some(e);
         }
         let total: usize = counters.iter().map(|c| c.load(Ordering::Relaxed)).sum();
-        if total >= TARGET_TOTAL_ACKED || load_start.elapsed() >= LOAD_DEADLINE {
+        if !calibrated && total >= CALIBRATION_WRITES {
+            let per_write = load_start.elapsed().div_f64(total as f64);
+            load_deadline = per_write
+                .mul_f64(TARGET_TOTAL_ACKED as f64 * CALIBRATION_HEADROOM)
+                .clamp(LOAD_DEADLINE_MIN, LOAD_DEADLINE_MAX);
+            calibrated = true;
+            println!(
+                "chaos load calibrated: {per_write:?}/write over {total} writes -> \
+                 load_deadline={load_deadline:?}"
+            );
+        }
+        if total >= TARGET_TOTAL_ACKED || load_start.elapsed() >= load_deadline {
             break total;
         }
         thread::sleep(Duration::from_millis(5));
     };
     assert!(
         total_before_kill >= TARGET_TOTAL_ACKED,
-        "load phase must reach {TARGET_TOTAL_ACKED} acknowledged writes within {LOAD_DEADLINE:?}; \
+        "load phase must reach {TARGET_TOTAL_ACKED} acknowledged writes within {load_deadline:?}; \
          only reached {total_before_kill}"
     );
 

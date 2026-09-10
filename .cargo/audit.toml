@@ -30,20 +30,27 @@ ignore = [
     # h2 "unbounded empty DATA frames" (low severity, DoS). The h2 0.4 lockfile
     # instance is PATCHED (bumped to 0.4.16); this ignore covers only the
     # remaining h2 0.3.27 instance, for which NO patched 0.3 release exists.
-    # Transitive-only via the AWS smithy stack's legacy hyper-0.14 path
-    # (h2 0.3 <- aws-smithy-http-client <- aws-smithy-mocks / aws-smithy-runtime
-    # <- aws-config / aws-sdk-kms / aws-sdk-s3), reachable only through the
-    # optional `encryption-aws-kms` / `embeddings` features — absent from
-    # default and CI builds, so shipped-build exposure is nil. Remove when the
-    # smithy stack drops its h2 0.3 legacy path (tracked via issue #3807).
+    # Transitive-only, and only when optional features are enabled. Every
+    # remaining route ends at aws-smithy-http-client's `hyper-014` feature
+    # (dep:h2-0-3 / dep:hyper-0-14):
+    #   (a) `encryption-aws-kms` -> `aws-sdk-kms/test-util` (required by the
+    #       aws-smithy-mocks Decrypt success-path test, see the feature's
+    #       comment in Cargo.toml) -> aws-smithy-runtime `test-util` /
+    #       `legacy-test-util` -> `connector-hyper-0-14-x` -> `hyper-014`;
+    #   (b) `embeddings` -> embed_anything -> aws-sdk-s3 declared WITH default
+    #       features (upstream, not ours to change) -> aws-sdk-s3's default
+    #       `rustls` -> aws-smithy-runtime's legacy `tls-rustls` -> `hyper-014`.
+    # This PR removed the third, redundant enabler: our aws-sdk-kms declaration
+    # now uses default-features=false with the modern `default-https-client`
+    # (hyper-1.x / h2-0.4, rustls-aws-lc TLS) instead of the default `rustls`
+    # (legacy `tls-rustls`). Latest smithy-runtime (1.14.0) still chains
+    # test-util through hyper-014, so (a) cannot be fixed from our side yet.
+    # In every case the legacy hyper-0.14 connector is compiled but never
+    # instantiated by our code (the default connector is hyper-1.x/h2-0.4),
+    # and h2 0.3 is absent entirely from default and CI builds — shipped-build
+    # exposure is nil. Durable fix: smithy stack drops hyper-014 from
+    # legacy-test-util, and embed_anything drops aws-sdk-s3 default features;
+    # re-check on the next aws-smithy / embed_anything refresh and remove this
+    # ignore then (tracked via issue #3807).
     "RUSTSEC-2026-0258",
-
-    # rkyv 0.7.46 shared-pointer validation OOB reads (patched >= 0.8.17; the
-    # 0.7 line is unsupported upstream). LOCKFILE-ONLY pin: it enters Cargo.lock
-    # via rust_decimal's optional `rkyv` feature, and rust_decimal itself is not
-    # in any resolved build graph (`cargo tree --workspace --all-features
-    # --target all -i` matches neither crate). No build compiles or links rkyv,
-    # so exposure is nil; cargo-audit scans the lockfile literally. Remove when
-    # a full lockfile re-resolution prunes the entry (tracked via issue #3807).
-    "RUSTSEC-2026-0235",
 ]

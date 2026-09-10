@@ -189,7 +189,14 @@ chacha20poly1305 = "0.10"
 hkdf = "0.13"
 sha2 = "0.11"
 zeroize = { version = "1.8", features = ["derive"] }
-aws-sdk-kms = { version = "1.106.0", optional = true, features = ["behavior-version-latest"] }
+# default-features disabled (Issue #3807): aws-sdk-kms's default `rustls`
+# feature maps to aws-smithy-runtime's legacy `tls-rustls` connector, which
+# enables aws-smithy-http-client's `hyper-014` feature and pulls hyper 0.14 /
+# h2 0.3 (RUSTSEC-2026-0258 — no patched 0.3 release exists upstream).
+# `default-https-client` selects the modern hyper-1.x / h2-0.4 client instead
+# (rustls-aws-lc TLS); `rt-tokio` keeps the async runtime. The KMS provider
+# only uses the SDK's client-builder API, which is unchanged by this.
+aws-sdk-kms = { version = "1.106.0", optional = true, default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
 # Mocked AWS transport for the KMS provider's Decrypt success-path test
 # (Issue #3587 review). Enabled ONLY by the `encryption-aws-kms` feature and
 # referenced solely from `#[cfg(test)]` code, so it never touches a normal build

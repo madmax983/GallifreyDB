@@ -254,16 +254,20 @@ jobs:
           #
           # RUSTSEC-2026-0258: h2 0.3.27 "unbounded empty DATA frames" (low
           # severity DoS). The h2 0.4 instance is patched (0.4.16 in the
-          # lockfile); no patched 0.3 release exists. Transitive-only via the
-          # AWS smithy stack's legacy hyper-0.14 path, reachable only through
-          # the optional `encryption-aws-kms` / `embeddings` features. See
-          # .cargo/audit.toml; tracked via issue #3807.
+          # lockfile); no patched 0.3 release exists. Transitive-only, and
+          # only with optional features enabled: `encryption-aws-kms` (via
+          # aws-sdk-kms/test-util -> smithy legacy-test-util -> hyper-014,
+          # required by the mock Decrypt test) and `embeddings` (via
+          # embed_anything -> aws-sdk-s3 default `rustls` -> smithy
+          # tls-rustls -> hyper-014). This PR removed the redundant third
+          # enabler (aws-sdk-kms default `rustls`). The legacy connector is
+          # compiled but never instantiated by our code; absent from
+          # default/CI builds. See .cargo/audit.toml; tracked via #3807.
           #
-          # RUSTSEC-2026-0235: rkyv 0.7.46, a lockfile-only pin via
-          # rust_decimal's optional `rkyv` feature — in no resolved build graph,
-          # never compiled or linked. See .cargo/audit.toml; tracked via issue
-          # #3807.
-          ignore: "RUSTSEC-2026-0104, RUSTSEC-2024-0436, RUSTSEC-2023-0071, RUSTSEC-2026-0258, RUSTSEC-2026-0235"
+          # RUSTSEC-2026-0235 (rkyv 0.7.46): RESOLVED — rust_decimal was
+          # updated 1.42.1 -> 1.43.0, which dropped its rkyv dependency
+          # entirely; rkyv no longer appears in Cargo.lock. Ignore removed.
+          ignore: "RUSTSEC-2026-0104, RUSTSEC-2024-0436, RUSTSEC-2023-0071, RUSTSEC-2026-0258"
 
   feature-matrix:
     name: Feature Matrix

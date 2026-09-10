@@ -899,6 +899,14 @@ name = "aletheia-server"
 path = "src/bin/server.rs"
 required-features = ["http-server"]
 
+# MCP `traverse` tool instruction-count/allocation profiling harness (Bolt).
+# Drives `AletheiaMcpServer::traverse` in-process against a deterministic
+# social-graph dataset -- see the file's doc comment for how it differs from
+# `bolt_workload.rs`.
+[[example]]
+name = "bolt_mcp_traverse_workload"
+required-features = ["mcp-server"]
+
 [[bench]]
 name = "edge_iteration"
 harness = false

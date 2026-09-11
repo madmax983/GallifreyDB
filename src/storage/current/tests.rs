@@ -1500,6 +1500,98 @@ fn test_get_outgoing_edges_iter_empty() {
     assert_eq!(count, 0);
 }
 
+// Regression test for Issue #3813: the iterator resolves the frozen CSR run
+// bounds once at construction instead of re-running the O(log V) binary
+// search per `next()`. Pins the observable contract: the iterator must agree
+// with the Vec-returning path across every layer combination (frozen-only,
+// delta-only, mixed, tombstoned) and must not panic on nodes absent from the
+// CSR (binary-search miss -> empty range).
+#[test]
+fn test_outgoing_edges_iter_matches_vec_across_layers() {
+    let storage = CurrentStorage::new();
+
+    // Enough nodes that the CSR binary search is genuinely exercised.
+    let nodes: Vec<NodeId> = (0..32)
+        .map(|_| {
+            storage
+                .create_node("Person", PropertyMapBuilder::new().build())
+                .unwrap()
+        })
+        .collect();
+
+    // Edges from many sources; the last source's edges stay delta-only.
+    for (i, n) in nodes.iter().enumerate().take(31) {
+        for j in 1..=3 {
+            let target = nodes[(i + j * 7) % 32];
+            storage
+                .create_edge(*n, target, "KNOWS", PropertyMapBuilder::new().build())
+                .unwrap();
+        }
+    }
+    // Tombstone one edge per source to exercise the filter path.
+    let doomed: Vec<EdgeId> = nodes
+        .iter()
+        .take(31)
+        .map(|n| {
+            storage
+                .create_edge(*n, nodes[31], "KNOWS", PropertyMapBuilder::new().build())
+                .unwrap()
+        })
+        .collect();
+    for e in doomed {
+        storage.delete_edge(e).unwrap();
+    }
+
+    // Compact: sources 0..31 now have frozen runs; add delta-only edges after.
+    storage.compact_adjacency();
+    let mut delta_edges = Vec::new();
+    for (i, n) in nodes.iter().enumerate().take(16) {
+        let target = nodes[(i * 5 + 1) % 32];
+        delta_edges.push(
+            storage
+                .create_edge(*n, target, "FOLLOWS", PropertyMapBuilder::new().build())
+                .unwrap(),
+        );
+    }
+
+    let check_node = |n: NodeId| {
+        let mut from_iter: Vec<EdgeId> = storage.get_outgoing_edges_iter(n).collect();
+        let mut from_vec = storage.get_outgoing_edges(n);
+        from_iter.sort();
+        from_vec.sort();
+        assert_eq!(from_iter, from_vec, "iterator diverged from Vec path");
+        // Labeled variants share the same hoisted bounds.
+        let mut from_labeled: Vec<EdgeId> = storage
+            .get_outgoing_edges_with_label_iter(n, "KNOWS")
+            .collect();
+        let mut vec_labeled = storage.get_outgoing_edges_with_label(n, "KNOWS");
+        from_labeled.sort();
+        vec_labeled.sort();
+        assert_eq!(from_labeled, vec_labeled, "labeled iterator diverged");
+    };
+
+    for n in &nodes {
+        check_node(*n);
+    }
+    // Incoming direction uses the same macro-generated code path.
+    for n in &nodes {
+        let mut from_iter: Vec<EdgeId> = storage.get_incoming_edges_iter(*n).collect();
+        let mut from_vec = storage.get_incoming_edges(*n);
+        from_iter.sort();
+        from_vec.sort();
+        assert_eq!(from_iter, from_vec, "incoming iterator diverged");
+    }
+
+    // Node with no edges at all: binary-search miss must yield an empty
+    // iterator, not an out-of-bounds slice.
+    let lonely = storage
+        .create_node("Person", PropertyMapBuilder::new().build())
+        .unwrap();
+    assert_eq!(storage.get_outgoing_edges_iter(lonely).count(), 0);
+    assert_eq!(storage.get_incoming_edges_iter(lonely).count(), 0);
+    assert!(storage.get_outgoing_edges_iter(lonely).next().is_none());
+}
+
 #[test]
 fn test_get_incoming_edges_iter_basic() {
     let storage = CurrentStorage::new();

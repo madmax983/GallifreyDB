@@ -1159,6 +1159,43 @@ impl<'a> MergedAdjacencyGuard<'a> {
         self.frozen.get_adjacency(self.node)
     }
 
+    /// Resolve this node's frozen CSR run bounds with a single O(log V)
+    /// binary search (Issue #3813).
+    ///
+    /// The returned `(start, end)` indexes
+    /// [`frozen_entries`](Self::frozen_entries) and stays valid for the
+    /// guard's lifetime: the frozen `Guard` pins the CSR, so the underlying
+    /// array cannot change under the guard.
+    #[inline]
+    pub(crate) fn frozen_range(&self) -> (usize, usize) {
+        self.frozen.adjacency_range(self.node)
+    }
+
+    /// The whole frozen edge array pinned by this guard (O(1), no binary
+    /// search).
+    ///
+    /// Only index this with bounds from [`frozen_range`](Self::frozen_range).
+    #[inline]
+    pub(crate) fn frozen_entries(&self) -> &[AdjacencyEntry] {
+        self.frozen.all_entries()
+    }
+
+    /// Publish-window de-duplication against an already-resolved frozen slice
+    /// (Issue #3813).
+    ///
+    /// Same predicate as [`delta_entry_is_duplicate`](Self::delta_entry_is_duplicate)
+    /// but takes the frozen slice the caller already resolved (e.g. via
+    /// [`frozen_range`](Self::frozen_range) + [`frozen_entries`](Self::frozen_entries))
+    /// instead of re-running the O(log V) node lookup per delta entry.
+    #[inline]
+    pub(crate) fn delta_entry_is_duplicate_in(
+        &self,
+        frozen_slice: &[AdjacencyEntry],
+        entry: &AdjacencyEntry,
+    ) -> bool {
+        self.publish_window && frozen_slice_contains(frozen_slice, entry)
+    }
+
     /// Get the delta adjacency slice for this node (O(1)).
     ///
     /// Returns an empty slice when no delta entries exist.

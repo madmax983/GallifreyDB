@@ -376,6 +376,32 @@ impl AdjacencyIndex {
         }
     }
 
+    /// Resolve the flat-array bounds of `node`'s adjacency run with a single
+    /// O(log N) binary search (Issue #3813).
+    ///
+    /// Returns `(start, end)` such that
+    /// `&self.all_entries()[start..end]` is exactly what
+    /// [`get_adjacency`](Self::get_adjacency) would return; `(0, 0)` for
+    /// nodes with no edges.
+    #[inline]
+    pub(crate) fn adjacency_range(&self, node: NodeId) -> (usize, usize) {
+        match self.node_ids.binary_search(&node) {
+            Ok(idx) => (self.offsets[idx], self.offsets[idx + 1]),
+            Err(_) => (0, 0),
+        }
+    }
+
+    /// The entire flat adjacency array (O(1), no binary search).
+    ///
+    /// Only index this with bounds from
+    /// [`adjacency_range`](Self::adjacency_range). Callers obtain the array
+    /// through a `Guard<Arc<AdjacencyIndex>>` that pins the CSR, so resolved
+    /// bounds stay valid for the guard's lifetime.
+    #[inline]
+    pub(crate) fn all_entries(&self) -> &[AdjacencyEntry] {
+        &self.edges
+    }
+
     /// Get outgoing edges for a node with a specific label.
     ///
     /// Performs an `O(log N) + O(E)` traversal where `N` is the number of nodes with

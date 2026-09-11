@@ -51,6 +51,15 @@ macro_rules! impl_edge_iter {
         )]
         pub struct $name<'a> {
             guard: MergedAdjacencyGuard<'a>,
+            /// Bounds of this node's run in `guard.frozen_entries()`, resolved
+            /// once at construction (Issue #3813).
+            ///
+            /// `MergedAdjacencyGuard::frozen_slice()` is an O(log V) binary
+            /// search, so calling it per `next()` made a degree-`d` walk cost
+            /// O(d * log V). The guard pins the frozen CSR, so these bounds
+            /// are stable for the iterator's lifetime.
+            frozen_start: usize,
+            frozen_end: usize,
             index: usize,
         }
 
@@ -58,7 +67,13 @@ macro_rules! impl_edge_iter {
             #[doc = concat!("Create a new iterator over ", $direction, " edges.")]
             #[inline]
             pub(crate) fn new(guard: MergedAdjacencyGuard<'a>) -> Self {
-                Self { guard, index: 0 }
+                let (frozen_start, frozen_end) = guard.frozen_range();
+                Self {
+                    guard,
+                    frozen_start,
+                    frozen_end,
+                    index: 0,
+                }
             }
         }
 
@@ -67,9 +82,13 @@ macro_rules! impl_edge_iter {
 
             #[inline]
             fn next(&mut self) -> Option<Self::Item> {
-                // HOT PATH: Use direct slice access to avoid O(n^2) traversal.
-                // MergedAdjacencyGuard::get() is O(n), so calling it in a loop is O(n^2).
-                let frozen_slice = self.guard.frozen_slice();
+                // O(1) slice re-derivation from the bounds resolved at
+                // construction -- no binary search per element (Issue #3813).
+                // MergedAdjacencyGuard::get() is O(n), so calling it in a loop
+                // would be O(n^2); frozen_slice() is O(log V) per call, which
+                // was the ~3.8x slowdown vs the Vec path.
+                let frozen_slice =
+                    &self.guard.frozen_entries()[self.frozen_start..self.frozen_end];
                 let delta_slice = self.guard.delta_slice();
 
                 while self.index < frozen_slice.len() + delta_slice.len() {
@@ -91,7 +110,11 @@ macro_rules! impl_edge_iter {
                     // momentarily in both layers (Issue #3810). This walks the
                     // layers directly instead of through `guard.iter()`, so it
                     // has to apply the same de-duplication that does.
-                    if from_delta && self.guard.delta_entry_is_duplicate(entry) {
+                    if from_delta
+                        && self
+                            .guard
+                            .delta_entry_is_duplicate_in(frozen_slice, entry)
+                    {
                         continue;
                     }
                     return Some(entry.edge_id);
@@ -148,6 +171,12 @@ macro_rules! impl_edge_iter_with_label {
         )]
         pub struct $name<'a> {
             guard: MergedAdjacencyGuard<'a>,
+            /// Bounds of this node's run in `guard.frozen_entries()`, resolved
+            /// once at construction (Issue #3813) -- see the unlabeled
+            /// iterator above for why this must not be a per-`next()`
+            /// `frozen_slice()` call.
+            frozen_start: usize,
+            frozen_end: usize,
             index: usize,
             label_id: Option<InternedString>,
         }
@@ -156,8 +185,11 @@ macro_rules! impl_edge_iter_with_label {
             #[doc = concat!("Create a new iterator over ", $direction, " edges with a specific label.")]
             #[inline]
             pub(crate) fn new(guard: MergedAdjacencyGuard<'a>, label_id: Option<InternedString>) -> Self {
+                let (frozen_start, frozen_end) = guard.frozen_range();
                 Self {
                     guard,
+                    frozen_start,
+                    frozen_end,
                     index: 0,
                     label_id,
                 }
@@ -174,8 +206,11 @@ macro_rules! impl_edge_iter_with_label {
 
                 // Linear scan with manual indexing - O(n) total complexity.
                 // We access frozen and delta slices directly to avoid O(n^2) indexing
-                // through the MergedAdjacencyGuard.
-                let frozen_slice = self.guard.frozen_slice();
+                // through the MergedAdjacencyGuard. The frozen bounds were
+                // resolved once at construction (Issue #3813) instead of
+                // re-running the O(log V) `frozen_slice()` lookup per element.
+                let frozen_slice =
+                    &self.guard.frozen_entries()[self.frozen_start..self.frozen_end];
                 let delta_slice = self.guard.delta_slice();
 
                 while self.index < frozen_slice.len() + delta_slice.len() {
@@ -194,7 +229,10 @@ macro_rules! impl_edge_iter_with_label {
                     // iterator above.
                     if entry.label == label_id
                         && !self.guard.is_tombstoned(entry.edge_id)
-                        && !(from_delta && self.guard.delta_entry_is_duplicate(entry))
+                        && !(from_delta
+                            && self
+                                .guard
+                                .delta_entry_is_duplicate_in(frozen_slice, entry))
                     {
                         return Some(entry.edge_id);
                     }
